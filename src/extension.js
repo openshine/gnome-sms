@@ -21,13 +21,35 @@
 **/
 
 const Main = imports.ui.main;
+const PanelMenu = imports.ui.panelMenu;
 const Lang = imports.lang;
 const St = imports.gi.St;
-const PanelMenu = imports.ui.panelMenu;
+const DBus = imports.dbus;
 
 /* Global vars */
-
 let smsButton;
+
+const ModemManagerIface = {
+    name: 'org.freedesktop.ModemManager',
+    properties: [],
+    methods: [
+        { name: 'EnumerateDevices', inSignature: '',  outSignature: 'ao'},
+    ],
+    signals: []
+}
+
+const SMSIface = {
+    name: 'org.freedesktop.ModemManager.Modem.Gsm.SMS',
+    properties: [],
+    methods: [
+        { name: 'List', inSignature: '',  outSignature: 'aa{sv}'},
+    ],
+    signals: []
+};
+ ;
+ 
+let ModemManager = DBus.makeProxyClass (ModemManagerIface);
+let SMS = DBus.makeProxyClass (SMSIface);
 
 const SmsButton = new Lang.Class({
     Name: 'SmsButton',
@@ -36,16 +58,53 @@ const SmsButton = new Lang.Class({
     _init: function() {
         this.parent(0.0, "sms");
 
-	this._iconBox = new St.BoxLayout();
-	this._iconIndicator = new St.Icon({icon_name: 'phone',
-		                           style_class: 'system-status-icon'});
-	this._iconStateBin = new St.Bin({child: this._iconIndicator,
-		                         y_align: St.Align.END});
+        this._proxy = new ModemManager (DBus.system, 'org.freedesktop.ModemManager', '/org/freedesktop/ModemManager');
 
-	this._iconBox.add(this._iconStateBin);
-	this.actor.add_actor(this._iconBox);
-	this.actor.add_style_class_name('panel-status-button');
-//	this.actor.connect('scroll-event', Lang.bind(this, this._onScrollEvent));
+        this._createMainButton();
+        this._createMainPanel();
+    },
+
+    _createMainButton: function () {
+        this._iconBox = new St.BoxLayout();
+        this._iconIndicator = new St.Icon({icon_name: 'phone',
+            style_class: 'system-status-icon'});
+        this._iconStateBin = new St.Bin({child: this._iconIndicator,
+            y_align: St.Align.END});
+
+        this._iconBox.add(this._iconStateBin);
+        this.actor.add_actor(this._iconBox);
+        this.actor.add_style_class_name('panel-status-button');
+    },
+
+    _createMainPanel: function () {
+        let mainBox = new St.BoxLayout({ vertical: true,
+                                         style_class: 'sms-box' });
+        this._searchBar = new St.BoxLayout({ style_class: 'search-box'});
+        this._smsDisplay =  new St.BoxLayout({ style_class: 'sms-display-box'});
+        mainBox.add_actor(this._searchBar, { expand: false, x_fill: false });
+        mainBox.add_actor(this._smsDisplay, { expand: false, x_fill: false });
+        this.menu.addActor(mainBox);
+
+        this._entry = new St.Entry({ name: 'searchEntry',
+                                     hint_text: _("Type to search..."),
+                                     track_hover: true,
+                                     can_focus: true });
+        this._entry.set_secondary_icon (new St.Icon({ style_class: 'search-entry-icon',
+                                                      icon_name: 'edit-find',
+                                                      icon_type: St.IconType.SYMBOLIC }));
+        this._searchBar.add_actor (this._entry);
+
+        this._proxy.EnumerateDevicesRemote(Lang.bind(this, this._on_get_modems));
+    },
+
+    _on_get_modems: function (modems) {
+        let path = modems[0];
+        let sms_proxy = new SMS (DBus.system, 'org.freedesktop.ModemManager', path);
+        sms_proxy.ListRemote (Lang.bind (this, this._on_sms_list));
+    },
+
+    _on_sms_list: function (list) {
+        global.log (list);
     }
 });
 
