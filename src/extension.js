@@ -78,11 +78,19 @@ const SmsButton = new Lang.Class({
 
     _createMainPanel: function () {
         let mainBox = new St.BoxLayout({ vertical: true,
-                                         style_class: 'sms-box' });
+                                         style_class: 'main-box' });
         this._searchBar = new St.BoxLayout({ style_class: 'search-box'});
-        this._smsDisplay =  new St.BoxLayout({ style_class: 'sms-display-box'});
+
+        this._smsBox =  new St.BoxLayout({ style_class: 'sms-box'});
+        this._contactsBox =  new St.BoxLayout({ vertical:true,
+                                                style_class: 'sms-contacts-box'});
+        this._messageDisplay =  new St.BoxLayout({ vertical:true,
+                                                   style_class: 'sms-display-box'});
+        this._smsBox.add_actor (this._contactsBox);
+        this._smsBox.add_actor (this._messageDisplay);
+
         mainBox.add_actor(this._searchBar, { expand: false, x_fill: false });
-        mainBox.add_actor(this._smsDisplay, { expand: false, x_fill: false });
+        mainBox.add_actor(this._smsBox, { expand: false, x_fill: false });
         this.menu.addActor(mainBox);
 
         this._entry = new St.Entry({ name: 'searchEntry',
@@ -94,19 +102,39 @@ const SmsButton = new Lang.Class({
                                                       icon_type: St.IconType.SYMBOLIC }));
         this._searchBar.add_actor (this._entry);
 
-        this._proxy.EnumerateDevicesRemote(Lang.bind(this, this._on_get_modems));
+        this._contactsBox.add_actor (new ContactInfo ("César García"));
+        //this._proxy.EnumerateDevicesRemote(Lang.bind(this, this._on_get_modems));
     },
 
     _on_get_modems: function (modems) {
-        let path = modems[0];
-        let sms_proxy = new SMS (DBus.system, 'org.freedesktop.ModemManager', path);
-        sms_proxy.ListRemote (Lang.bind (this, this._on_sms_list));
+        if (modems.length > 0) {
+            let path = modems[0];
+            global.log ("----: " + modems);
+            global.log ("PATH: " + path);
+            let sms_proxy = new SMS (DBus.system, 'org.freedesktop.ModemManager', path);
+            sms_proxy.ListRemote (Lang.bind (this, this._on_sms_list));
+        }
     },
 
     _on_sms_list: function (list) {
         global.log (list);
     }
 });
+
+const ContactInfo = new Lang.Class({
+    Name: 'ContactInfo',
+    Extends: St.BoxLayout,
+
+    _init: function(name) {
+        this.parent();
+
+        this._name = new St.Label ({style_class: 'contact-name-label'});
+        this._name.set_text (name);
+        this.add_actor (this._name);
+    }
+});
+
+
 
 function init() {
 }
