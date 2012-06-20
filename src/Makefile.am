@@ -1,6 +1,6 @@
 include ../include.mk
 
-dist_extension_DATA = extension.js stylesheet.css 
+dist_extension_DATA = extension.js stylesheet.css left-arrow.png right-arrow.png 
 nodist_extension_DATA = metadata.json
 
 EXTRA_DIST = metadata.json.in

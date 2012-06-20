@@ -1,13 +1,51 @@
-.main-box {
+.gsms-main-box {
+    padding-left: 10px;
+    padding-right: 10px;
+    spacing: 10px;
+}
+
+.gsms-sms-box {
+    spacing: 5px;
+}
+
+.gsms-sms-contacts-box {
+    spacing: 5px;
+}
+
+.gsms-contact {
+    border-radius: 5px;
+    background-color: #333;
+    padding: 5px;
+}
+
+.gsms-contact-icon {
+    border: 2px solid #999;
+    border-radius: 5px;
+}
+
+.gsms-message-display {
+    width: 500px;
+    height: 500px;
+    border-radius: 5px;
+    background-color: #bbb;
     padding: 10px;
+    spacing: 10px;
 }
 
-.sms-contacts-box {
-    border-right: 1px solid #fff;
+.gsms-message {
 }
 
-.contact-name-label {
-    font-weight: bold;
-    font-size: 0.9em;
-    color: #fff;
+.gsms-message-tag {
+}
+
+.gsms-message-incoming {
+    border: 1px solid #333;
+    border-radius: 5px;
+    background-color: #e1b45e;
+}
+
+.gsms-message-outgoing {
+    border: 1px solid #333;
+    border-radius: 5px;
+    background-color: #7ce15e;
 }

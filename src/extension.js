@@ -22,12 +22,18 @@
 
 const Main = imports.ui.main;
 const PanelMenu = imports.ui.panelMenu;
-const Lang = imports.lang;
+
 const St = imports.gi.St;
+const Gio = imports.gi.Gio;
+const Pango = imports.gi.Pango;
+
+const Lang = imports.lang;
 const DBus = imports.dbus;
 
 /* Global vars */
+const ICON_SIZE = 40;
 let smsButton;
+let extension = imports.misc.extensionUtils.getCurrentExtension();
 
 const ModemManagerIface = {
     name: 'org.freedesktop.ModemManager',
@@ -78,20 +84,19 @@ const SmsButton = new Lang.Class({
 
     _createMainPanel: function () {
         let mainBox = new St.BoxLayout({ vertical: true,
-                                         style_class: 'main-box' });
-        this._searchBar = new St.BoxLayout({ style_class: 'search-box'});
-
-        this._smsBox =  new St.BoxLayout({ style_class: 'sms-box'});
-        this._contactsBox =  new St.BoxLayout({ vertical:true,
-                                                style_class: 'sms-contacts-box'});
-        this._messageDisplay =  new St.BoxLayout({ vertical:true,
-                                                   style_class: 'sms-display-box'});
-        this._smsBox.add_actor (this._contactsBox);
-        this._smsBox.add_actor (this._messageDisplay);
-
-        mainBox.add_actor(this._searchBar, { expand: false, x_fill: false });
-        mainBox.add_actor(this._smsBox, { expand: false, x_fill: false });
+                                         style_class: 'gsms-main-box' });
         this.menu.addActor(mainBox);
+
+        let searchBar = new St.BoxLayout({ style_class: 'gsms-search-box'});
+        let smsBox =  new St.BoxLayout({ style_class: 'gsms-sms-box'});
+        mainBox.add_actor(searchBar, { expand: false, x_fill: false });
+        mainBox.add_actor(smsBox, { expand: false, x_fill: false });
+
+        this._contactsBox =  new St.BoxLayout({ vertical:true,
+                                                style_class: 'gsms-sms-contacts-box'});
+        this._messageDisplay = new MessageDisplay ();
+        smsBox.add_actor (this._contactsBox);
+        smsBox.add_actor (this._messageDisplay);
 
         this._entry = new St.Entry({ name: 'searchEntry',
                                      hint_text: _("Type to search..."),
@@ -100,9 +105,10 @@ const SmsButton = new Lang.Class({
         this._entry.set_secondary_icon (new St.Icon({ style_class: 'search-entry-icon',
                                                       icon_name: 'edit-find',
                                                       icon_type: St.IconType.SYMBOLIC }));
-        this._searchBar.add_actor (this._entry);
+        searchBar.add_actor (this._entry);
 
         this._contactsBox.add_actor (new ContactInfo ("César García"));
+        this._contactsBox.add_actor (new ContactInfo ("Roberto Majadas Lopez"));
         //this._proxy.EnumerateDevicesRemote(Lang.bind(this, this._on_get_modems));
     },
 
@@ -126,15 +132,113 @@ const ContactInfo = new Lang.Class({
     Extends: St.BoxLayout,
 
     _init: function(name) {
-        this.parent();
+        this.parent ();
+        this.style_class = 'gsms-contact';
 
-        this._name = new St.Label ({style_class: 'contact-name-label'});
+        this._icon = new St.Icon ({ icon_type: St.IconType.FULLCOLOR,
+                                    icon_size: ICON_SIZE,
+                                    style_class: 'gsms-contact-icon' });
+        this.add (this._icon, { x_fill: true,
+                                y_fill: true,
+                                x_align: St.Align.START,
+                                y_align: St.Align.MIDDLE });
+
+        this._details = new St.BoxLayout({ style_class: 'gsms-contact-details',
+                                           vertical: true });
+        this.add_actor (this._details, { x_fill: true,
+                                         y_fill: true,
+                                         x_align: St.Align.START,
+                                         y_align: St.Align.MIDDLE });
+
+        this._name = new St.Label ({style_class: 'gsms-contact-details-label'});
+        this._details.add (this._name, { x_fill: false,
+                                         y_fill: true,
+                                         x_align: St.Align.START,
+                                         y_align: St.Align.MIDDLE });
+
+        if (name) {
+            this.set_name (name);
+            this.set_picture ();
+        }
+    },
+
+    set_picture: function () {
+        this._icon.icon_name = 'avatar-default';
+    },
+
+    set_name: function (name) {
         this._name.set_text (name);
-        this.add_actor (this._name);
     }
 });
 
+const MessageDisplay = new Lang.Class({
+    Name: 'MessageDisplay',
+    Extends: St.BoxLayout,
 
+    _init: function(name) {
+        this.parent ({vertical: true});
+        this.style_class = 'gsms-message-display';
+
+        let message = new MessageView ("incoming", "Hola que tal me llamo cesar y esto es una prueba de un texto largo a ver como me las apaño para pintarlo todo seguido y que quede bien");
+        this.add_actor (message, { x_fill: false,
+                                   y_fill: false,
+                                   x_align: St.Align.START,
+                                   y_align: St.Align.MIDDLE });
+
+        message = new MessageView ("outgoing", "Hola que tal me llamo cesar y esto es una prueba de un texto largo a ver como me las apaño para pintarlo todo seguido y que quede bien");
+        this.add_actor (message, { x_fill: false,
+                                   y_fill: false,
+                                   x_align: St.Align.START,
+                                   y_align: St.Align.MIDDLE });
+    }
+});
+
+const MessageView = new Lang.Class({
+    Name: 'MessageView',
+    Extends: St.BoxLayout,
+
+    _init: function(direction, text) {
+        this.parent ();
+        this.style_class = 'gsms-message';
+
+        this._text = new St.Label ();
+        this._text.clutter_text.line_wrap = true;
+        this._text.clutter_text.line_wrap_mode = Pango.WrapMode.WORD;
+        this._text.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+
+        if (direction == 'incoming') {
+            this._text.style_class ='gsms-message-incoming';
+
+            this._tag_icon = new St.Icon ({ icon_type: St.IconType.FULLCOLOR,
+                                            icon_size: 12,
+                                            gicon: Gio.icon_new_for_string(extension.path + "/left-arrow.png"),
+                                            });
+
+            this.add (this._tag_icon);
+            this.add_actor (this._text, { expand: true, x_fill: true, y_fill: false });
+        }
+        else {
+            this._text.style_class = 'gsms-message-outgoing';
+
+            this._tag_icon = new St.Icon ({ icon_type: St.IconType.FULLCOLOR,
+                                            icon_size: 12,
+                                            gicon: Gio.icon_new_for_string(extension.path + "/right-arrow.png"),
+                                            });
+
+            this.add_actor (this._text, { expand: true, x_fill: true, y_fill: false });
+            this.add (this._tag_icon);
+        }
+        this._tag_icon.style_class ='gsms-message-tag';
+
+        if (text) {
+            this.set_text (text);
+        }
+    },
+
+    set_text: function (text) {
+        this._text.set_text (text);
+    }
+});
 
 function init() {
 }
