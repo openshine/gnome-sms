@@ -166,7 +166,6 @@ const SmsApplet = new Lang.Class({
 
                 let phone = this._normalize (sms.number);
                 if (!(phone in this._SmsList)) {
-                    global.log ("+++++++++" + phone);
                     this._SmsList[phone] = [];
                 }
 
@@ -231,7 +230,6 @@ const ContactList = new Lang.Class({
         this._smsList = smsList;
 
         for (let phone in this._smsList) {
-            global.log ("----------> " + phone);
             let contact = new Contact (phone);
             let contactButton = new ContactButton (contact);
             contactButton.connect ('clicked', Lang.bind (this, this._onContactButtonClicked));
@@ -437,7 +435,7 @@ function init() {
 }
 
 function enable() {
-    smsApplet = new SmsApplet ();
+    let smsApplet = new SmsApplet ();
     Main.panel.addToStatusArea('sms', smsApplet);
 }
 
