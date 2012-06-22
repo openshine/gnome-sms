@@ -7,11 +7,15 @@
 .gsms-search-box {
 }
 
-.gsms-contacts-box {
+.gsms-contact-list {
     spacing: 5px;
 }
 
-.gsms-contacts-list {
+.gsms-contact-list-scrollview {
+    height: 500px;
+}
+
+.gsms-contacts-box {
     spacing: 5px;
 }
 

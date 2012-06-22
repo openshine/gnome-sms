@@ -26,47 +26,77 @@ const St = imports.gi.St;
 const Gio = imports.gi.Gio;
 const Gtk = imports.gi.Gtk;
 const Pango = imports.gi.Pango;
+const NetworkManager = imports.gi.NetworkManager;
 
 const Lang = imports.lang;
 const DBus = imports.dbus;
+const Signals = imports.signals;
+const Mainloop = imports.mainloop;
+
+const ContactSystem = imports.gi.Shell.ContactSystem;
 
 /* Global vars */
 const CONTACT_ICON_SIZE = 40;
 let smsButton;
 let extension = imports.misc.extensionUtils.getCurrentExtension();
 
-const ModemManagerIface = {
+const ModemManagerDBusIface = {
     name: 'org.freedesktop.ModemManager',
     properties: [],
     methods: [
-        { name: 'EnumerateDevices', inSignature: '',  outSignature: 'ao'},
+        { name: 'EnumerateDevices', inSignature: '',  outSignature: 'ao' },
+    ],
+    signals: [
+        { name: 'DeviceAdded', inSignature: 'o' },
+        { name: 'DeviceRemoved', inSignature: 'o' },
+    ]
+};
+
+const ModemDBusIface = {
+    name: 'org.freedesktop.ModemManager.Modem',
+    properties: [
+        { name: 'Type', signature: 'i', access: 'read' }
+    ],
+    methods: [
+        { name: 'Enable', inSignature: 'b', outSignature: '' },
     ],
     signals: []
 };
 
-const SMSIface = {
+const SmsDBusIface = {
     name: 'org.freedesktop.ModemManager.Modem.Gsm.SMS',
     properties: [],
     methods: [
-        { name: 'List', inSignature: '',  outSignature: 'aa{sv}'},
+        { name: 'List', inSignature: '',  outSignature: 'aa{sv}' },
+        { name: 'Get', inSignature: 'i', outSignature: 'a{sv}' },
     ],
-    signals: []
+    signals: [
+        { name: 'SmsReceived', inSignature: 'ib' },
+        { name: 'Completed', inSignature: 'ib' },
+    ]
 };
  
-let ModemManager = DBus.makeProxyClass (ModemManagerIface);
-let SMS = DBus.makeProxyClass (SMSIface);
+let ModemManagerDBus = DBus.makeProxyClass (ModemManagerDBusIface);
+let ModemDBus = DBus.makeProxyClass (ModemDBusIface);
+let SmsDBus = DBus.makeProxyClass (SmsDBusIface);
 
-const SmsButton = new Lang.Class({
-    Name: 'SmsButton',
+const SmsApplet = new Lang.Class({
+    Name: 'SmsApplet',
     Extends: PanelMenu.Button,
 
     _init: function() {
         this.parent(0.0, "sms");
 
-        this._proxy = new ModemManager (DBus.system, 'org.freedesktop.ModemManager', '/org/freedesktop/ModemManager');
+        this._SmsList= {};
+
+        this._proxy = new ModemManagerDBus (DBus.system, 'org.freedesktop.ModemManager', '/org/freedesktop/ModemManager');
 
         this._createMainButton();
         this._createMainPanel();
+
+        this._loadDevices ();
+        this._proxy.connect ('DeviceAdded', Lang.bind (this, this._onDeviceAdded));
+        this._proxy.connect ('DeviceRemoved', Lang.bind (this, this._onDeviceRemoved));
     },
 
     _createMainButton: function () {
@@ -84,40 +114,98 @@ const SmsButton = new Lang.Class({
         let smsBox =  new St.BoxLayout({ style_class: 'gsms-sms-box'});
         this.menu.addActor(smsBox);
 
-        this._contactsBox = new ContactsBox ();
+        this._contactList = new ContactList();
+        this._contactList.connect ('selected-contact', Lang.bind (this, this._onSelectedContact));
         this._messageDisplay = new MessageDisplay ();
 
-        smsBox.add_actor (this._contactsBox);
+        smsBox.add_actor (this._contactList);
         smsBox.add_actor (this._messageDisplay);
-
-        //this._proxy.EnumerateDevicesRemote(Lang.bind(this, this._on_get_modems));
-        let contacts = [new Contact ("Cesar Garcia"), new Contact ("Roberto Majadas Lopez")];
-        this._messageDisplay.load_messages (contacts[0]);
-        this._contactsBox.load_contacts (contacts);
     },
 
-    _on_get_modems: function (modems) {
+    _onDeviceRemoved: function (path) {
+        this._loadDevices ();
+    },
+
+    _onDeviceAdded: function (path) {
+        this._loadDevices ();
+    },
+
+    _loadDevices: function () {
+        this._proxy.EnumerateDevicesRemote(Lang.bind(this, this._onGetModems));
+    },
+
+    _onGetModems: function (modems) {
         if (modems.length > 0) {
-            let path = modems[0];
-            global.log ("----: " + modems);
-            global.log ("PATH: " + path);
-            let sms_proxy = new SMS (DBus.system, 'org.freedesktop.ModemManager', path);
-            sms_proxy.ListRemote (Lang.bind (this, this._on_sms_list));
+            this._modem_path = modems[0];
+            global.log ("MODEM: " + this._modem_path);
+            let modem_proxy = new ModemDBus (DBus.system, 'org.freedesktop.ModemManager', this._modem_path);
+            global.log ("TYPE: " + modem_proxy.Type);
+            modem_proxy.EnableRemote (true, Lang.bind (this, this._onModemEnabled));
         }
     },
 
-    _on_sms_list: function (list) {
-        global.log (list);
+    _onModemEnabled: function () {
+        global.log ("MODEM ENABLED");
+        let sms_proxy = new SmsDBus (DBus.system, 'org.freedesktop.ModemManager', this._modem_path);
+        sms_proxy.ListRemote (Lang.bind (this, this._onSmsList));
+        sms_proxy.connect ('SmsReceived', Lang.bind (this, this._onSmsReceived));
+        sms_proxy.connect ('Completed', Lang.bind (this, this._onSmsReceived));
     },
+
+    _onSmsReceived: function (id, complete) {
+        if (complete) {
+            sms_proxy.ListRemote (Lang.bind (this, this._onSmsList));
+        }
+    },
+
+    _onSmsList: function (list) {
+        this._SmsList= {};
+        if (list) {
+            for (let i in list) {
+                let sms = list[i];
+
+                let phone = this._normalize (sms.number);
+                if (!(phone in this._SmsList)) {
+                    global.log ("+++++++++" + phone);
+                    this._SmsList[phone] = [];
+                }
+
+                let message = new Message (phone, sms.timestamp, sms.text);
+                this._SmsList[phone].push (message);
+            }
+        }
+        this._reloadInterface ();
+    },
+
+    _normalize: function (phone) {
+        return phone;
+    },
+
+    _reloadInterface: function () {
+        this._contactList.loadContacts (this._SmsList);
+        if (this._selectedContact) {
+            this._onSelectedContact (null, this._selectedContact);
+        }
+    },
+
+    _onSelectedContact: function (src, contact) {
+        this._selectedContact = contact;
+        this._messageDisplay.clear ();
+        for (let phone in this._SmsList) {
+            if (phone == contact.phone) {
+                this._messageDisplay.loadMessages (contact, this._SmsList[phone]);
+            }
+        }
+    }
 });
 
-const ContactsBox = new Lang.Class({
-    Name: 'ContactsBox',
+const ContactList = new Lang.Class({
+    Name: 'ContactList',
     Extends: St.BoxLayout,
 
     _init: function () {
         this.parent ({ vertical:true,
-                       style_class: 'gsms-contacts-box'});
+                       style_class: 'gsms-contact-list'});
 
         this._searchEntry = new St.Entry({ name: 'searchEntry',
                                      style_class: 'gsms-search-entry',
@@ -130,32 +218,90 @@ const ContactsBox = new Lang.Class({
 
         this.add_actor (this._searchEntry);
 
-        this._contactsBox = new St.BoxLayout ({vertical: true, style_class: 'gsms-contacts-list'});
-        this.add_actor (this._contactsBox);
+        this._contactsBox = new St.BoxLayout ({vertical: true, style_class: 'gsms-contacts-box'});
+
+        let scrollview = new St.ScrollView ({ style_class: 'gsms-contact-list-scrollview',
+                                              vscrollbar_policy: Gtk.PolicyType.NEVER,
+                                              hscrollbar_policy: Gtk.PolicyType.AUTOMATIC });
+        scrollview.add_actor (this._contactsBox); 
+        this.add (scrollview, {expand: true});
     },
 
-    load_contacts: function (contacts) {
-        for (var i = 0; i < contacts.length; i++) {
-            var contact = contacts[i];
-            this._contactsBox.add_actor (new ContactButton (contact));
+    loadContacts: function (smsList) {
+        this._smsList = smsList;
+
+        for (let phone in this._smsList) {
+            global.log ("----------> " + phone);
+            let contact = new Contact (phone);
+            let contactButton = new ContactButton (contact);
+            contactButton.connect ('clicked', Lang.bind (this, this._onContactButtonClicked));
+            this._contactsBox.add_actor (contactButton);
         }
+
+        /*
+        this._contactSystem = ContactSystem.get_default ();
+        let goa_contacts = this._contactSystem.initial_search (['']);
+        for (let i = 0; i < goa_contacts.length; i++) {
+            let goa_contact = this._contactSystem.get_individual(goa_contacts[i]);
+            if (goa_contact.alias) {
+                let contact = new Contact (goa_contact);
+                this._contactsBox.add_actor (new ContactButton (contact));
+            }
+        }
+        */
+    },
+
+    _onContactButtonClicked: function (button) {
+        this.emit ('selected-contact', button.contact);
     }
+});
+Signals.addSignalMethods(ContactList.prototype);
+
+const Message = new Lang.Class ({
+    Name: 'Message',
+
+    _init: function (phone, date, text) {
+        this.phone = phone;
+        this.date = date;
+        this.text = text;
+    },
 });
 
 const Contact = new Lang.Class ({
     Name: 'Contact',
 
-    _init: function (name) {
-        this.name = name;
+    _init: function (phone) {
+        this.name = phone;
+        this.phone = phone;
+
+        /*
+        this.goa_contact = goa_contact;
+        if (goa_contact.alias)
+            this.name = goa_contact.alias;
+        else
+            this.name = "UNKNOWN";
+        */
     },
 
-    get_icon: function (name) {
+    getIcon: function (name) {
         let icon = new St.Icon ({ icon_type: St.IconType.FULLCOLOR,
                                    icon_size: CONTACT_ICON_SIZE,
                                    style_class: 'gsms-contact-icon' });
         icon.icon_name = 'avatar-default';
 
         return icon;
+
+        /*
+        let icon = new St.Icon ({ icon_type: St.IconType.FULLCOLOR,
+                                   icon_size: CONTACT_ICON_SIZE,
+                                   style_class: 'gsms-contact-icon' });
+        if (this.goa_contact.avatar != null)
+            icon.gicon = this.goa_contact.avatar;
+        else
+            icon.icon_name = 'avatar-default';
+
+        return icon;
+        */
     }
 });
 
@@ -178,15 +324,9 @@ const ContactButton = new Lang.Class({
         this._name.set_text (this.contact.name);
         this._details.add (this._name, {expand: true, y_fill: true, y_align: St.Align.MIDDLE});
 
-        child.add (this.contact.get_icon());
+        child.add (this.contact.getIcon());
         child.add_actor (this._details);
-
-        this.connect ('clicked', Lang.bind(this, this._onClick));
     },
-
-    _onClick: function () {
-        global.log ("clicked");
-    }
 });
 
 const MessageDisplay = new Lang.Class({
@@ -215,25 +355,33 @@ const MessageDisplay = new Lang.Class({
         this.add_actor (this._entry);
     },
 
-    load_messages: function (contact) {
-        this._load_sender_info (contact);
-
-        let message = new MessageView ("incoming", "Hola que tal me llamo cesar y esto es una prueba de un texto ver como me las apaño para pintarlo todo seguido y que quede bien");
-        this._conversationDisplay.add_actor (message);
-        message = new MessageView ("outgoing", "Hola que tal me llamo cesar y esto es una prueba de un texto ver como me las apaño para pintarlo todo seguido y que quede bien");
-        this._conversationDisplay.add_actor (message);
+    clear: function () {
+        this._conversationDisplay.remove_all_children();
     },
 
-    _load_sender_info: function (contact) {
+    loadMessages: function (contact, messages) {
+        this._loadSenderInfo (contact);
+
+        for (let i in messages) {
+            let message = messages[i];
+            let messageView = new MessageView ("incoming", message);
+            this._conversationDisplay.add_actor (messageView);
+        }
+
+        //message = new MessageView ("outgoing", "Hola que tal me llamo cesar y esto es una prueba de un texto ver como me las apaño para pintarlo todo seguido y que quede bien");
+        //this._conversationDisplay.add_actor (message);
+    },
+
+    _loadSenderInfo: function (contact) {
         this._senderBox.remove_all_children();
-        
+
         let details = new St.BoxLayout({ style_class: 'gsms-contact-details',
                                          vertical: true });
         let name = new St.Label ({style_class: 'gsms-contact-details-label'});
-        name.set_text (contact.name);
+        name.set_text (contact.phone);
         details.add (name, {expand: true, y_align: St.Align.MIDDLE});
 
-        this._senderBox.add (contact.get_icon());
+        this._senderBox.add (contact.getIcon());
         this._senderBox.add_actor (details);
 
 
@@ -244,13 +392,13 @@ const MessageView = new Lang.Class({
     Name: 'MessageView',
     Extends: St.BoxLayout,
 
-    _init: function(direction, text) {
+    _init: function(direction, message) {
         this.parent ();
         this.style_class = 'gsms-message';
 
         this._text = new St.Label ();
         this._text.clutter_text.line_wrap = true;
-        this._text.clutter_text.line_wrap_mode = Pango.WrapMode.WORD;
+        this._text.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
         this._text.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
 
         if (direction == 'incoming') {
@@ -277,7 +425,7 @@ const MessageView = new Lang.Class({
         }
         this._tag_icon.style_class ='gsms-message-tag';
 
-        this.set_text (text);
+        this.set_text (message.text);
     },
 
     set_text: function (text) {
@@ -289,8 +437,8 @@ function init() {
 }
 
 function enable() {
-    smsButton = new SmsButton();
-    Main.panel.addToStatusArea('sms', smsButton);
+    smsApplet = new SmsApplet ();
+    Main.panel.addToStatusArea('sms', smsApplet);
 }
 
 function disable() {
