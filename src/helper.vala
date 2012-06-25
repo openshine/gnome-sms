@@ -1,13 +1,10 @@
 using Folks;
 
-class SMS.Helper: GLib.Object {
+public class GnomeSms.Helper: GLib.Object {
 
-    public static string[] get_phone_numbers (Individual individual) {
+    public static string[] get_phone_numbers (string phone) {
         string[] numbers = {};
-        foreach (var phone in individual.phone_numbers) {
-            numbers += phone;
-        }
-        
+	numbers += phone;
         return numbers;
     }
 }
