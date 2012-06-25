@@ -21,6 +21,7 @@
 
 const Main = imports.ui.main;
 const PanelMenu = imports.ui.panelMenu;
+const PopupMenu = imports.ui.popupMenu;
 
 const St = imports.gi.St;
 const Gio = imports.gi.Gio;
@@ -115,8 +116,13 @@ const SmsApplet = new Lang.Class({
     },
 
     _createMainPanel: function () {
+        let mainBox =  new St.BoxLayout({ style_class: 'gsms-main-box',
+                                          vertical: true });
+        this.menu.addActor(mainBox);
+
+        this._deviceSelector = new DeviceSelector ();
+
         let smsBox =  new St.BoxLayout({ style_class: 'gsms-sms-box'});
-        this.menu.addActor(smsBox);
 
         this._contactList = new ContactList();
         this._contactList.connect ('selected-contact', Lang.bind (this, this._onSelectedContact));
@@ -124,6 +130,9 @@ const SmsApplet = new Lang.Class({
 
         smsBox.add_actor (this._contactList);
         smsBox.add_actor (this._messageDisplay);
+
+        mainBox.add_actor (this._deviceSelector);
+        mainBox.add_actor (smsBox);
     },
 
     _onDeviceRemoved: function (path) {
@@ -203,6 +212,17 @@ const SmsApplet = new Lang.Class({
     }
 });
 
+const DeviceSelector = new Lang.Class ({
+    Name: 'DeviceSelector',
+    Extends: St.Button,
+
+    _init: function () {
+        this.parent ({ style_class: 'gsms-device-selector' });
+
+
+    },
+});
+
 const ContactList = new Lang.Class({
     Name: 'ContactList',
     Extends: St.BoxLayout,
@@ -271,7 +291,7 @@ const Contact = new Lang.Class ({
             let contact = contactSystem.get_individual(goa_contacts[i]);
             let numbers = contact.phone_numbers;
             for (let number in numbers) {
-                global.log ("NAME: " + contact.alias + " - PHONE: " + number);
+                //global.log ("NAME: " + contact.alias + " - PHONE: " + number);
                 if (number == phone && contact.alias) {
                     this.name = goa_contact.alias;
                     this.avatar = goa_contact.avatar;
