@@ -28,6 +28,7 @@ const Gio = imports.gi.Gio;
 const Gtk = imports.gi.Gtk;
 const Pango = imports.gi.Pango;
 const NetworkManager = imports.gi.NetworkManager;
+const GnomeSms = imports.gi.GnomeSms;
 
 const Lang = imports.lang;
 const DBus = imports.dbus;
@@ -286,15 +287,21 @@ const Contact = new Lang.Class ({
         this.phone = phone;
         this.avatar = null;
 
-
         for (let i = 0; i < goa_contacts.length; i++) {
             let contact = contactSystem.get_individual(goa_contacts[i]);
-            let numbers = contact.phone_numbers;
-            for (let number in numbers) {
-                //global.log ("NAME: " + contact.alias + " - PHONE: " + number);
-                if (number == phone && contact.alias) {
-                    this.name = goa_contact.alias;
-                    this.avatar = goa_contact.avatar;
+            let numbers = new GnomeSms.Helper().get_phone_numbers (contact);
+            for (let x in numbers) {
+                let number = numbers[x];
+                if (number == phone) {
+                    this.avatar = contact.avatar;
+                    if (contact.full_name)
+                        this.name = contact.full_name;
+                    else if (contact.alias)
+                        this.name = contact.alias;
+                    else if (contact.nickname)
+                        this.name = contact.nickname;
+                    else
+                        this.name = phone;
                 }
             }
         }
@@ -388,7 +395,7 @@ const MessageDisplay = new Lang.Class({
         let details = new St.BoxLayout({ style_class: 'gsms-contact-details',
                                          vertical: true });
         let name = new St.Label ({style_class: 'gsms-contact-details-label'});
-        name.set_text (contact.phone);
+        name.set_text (contact.name);
         details.add (name, {expand: true, y_align: St.Align.MIDDLE});
 
         this._senderBox.add (contact.getIcon());
