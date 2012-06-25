@@ -40,6 +40,9 @@ const CONTACT_ICON_SIZE = 40;
 let smsButton;
 let extension = imports.misc.extensionUtils.getCurrentExtension();
 
+let contactSystem = ContactSystem.get_default ();
+let goa_contacts;
+
 const ModemManagerDBusIface = {
     name: 'org.freedesktop.ModemManager',
     properties: [],
@@ -55,7 +58,8 @@ const ModemManagerDBusIface = {
 const ModemDBusIface = {
     name: 'org.freedesktop.ModemManager.Modem',
     properties: [
-        { name: 'Type', signature: 'i', access: 'read' }
+        { name: 'Type', signature: 'u', access: 'read' },
+        { name: 'State', signature: 'u', access: 'read' },
     ],
     methods: [
         { name: 'Enable', inSignature: 'b', outSignature: '' },
@@ -87,14 +91,14 @@ const SmsApplet = new Lang.Class({
     _init: function() {
         this.parent(0.0, "sms");
 
-        this._SmsList= {};
+        this._SmsList = {};
 
         this._proxy = new ModemManagerDBus (DBus.system, 'org.freedesktop.ModemManager', '/org/freedesktop/ModemManager');
 
         this._createMainButton();
         this._createMainPanel();
 
-        this._loadDevices ();
+        this._loadDevices();
         this._proxy.connect ('DeviceAdded', Lang.bind (this, this._onDeviceAdded));
         this._proxy.connect ('DeviceRemoved', Lang.bind (this, this._onDeviceRemoved));
     },
@@ -140,6 +144,7 @@ const SmsApplet = new Lang.Class({
             global.log ("MODEM: " + this._modem_path);
             let modem_proxy = new ModemDBus (DBus.system, 'org.freedesktop.ModemManager', this._modem_path);
             global.log ("TYPE: " + modem_proxy.Type);
+            global.log ("STATE: " + modem_proxy.State);
             modem_proxy.EnableRemote (true, Lang.bind (this, this._onModemEnabled));
         }
     },
@@ -235,18 +240,6 @@ const ContactList = new Lang.Class({
             contactButton.connect ('clicked', Lang.bind (this, this._onContactButtonClicked));
             this._contactsBox.add_actor (contactButton);
         }
-
-        /*
-        this._contactSystem = ContactSystem.get_default ();
-        let goa_contacts = this._contactSystem.initial_search (['']);
-        for (let i = 0; i < goa_contacts.length; i++) {
-            let goa_contact = this._contactSystem.get_individual(goa_contacts[i]);
-            if (goa_contact.alias) {
-                let contact = new Contact (goa_contact);
-                this._contactsBox.add_actor (new ContactButton (contact));
-            }
-        }
-        */
     },
 
     _onContactButtonClicked: function (button) {
@@ -271,36 +264,35 @@ const Contact = new Lang.Class ({
     _init: function (phone) {
         this.name = phone;
         this.phone = phone;
+        this.avatar = null;
 
-        /*
-        this.goa_contact = goa_contact;
-        if (goa_contact.alias)
-            this.name = goa_contact.alias;
-        else
-            this.name = "UNKNOWN";
-        */
+
+        for (let i = 0; i < goa_contacts.length; i++) {
+            let contact = contactSystem.get_individual(goa_contacts[i]);
+            let numbers = contact.phone_numbers;
+            for (let number in numbers) {
+                global.log ("NAME: " + contact.alias + " - PHONE: " + number);
+                if (number == phone && contact.alias) {
+                    this.name = goa_contact.alias;
+                    this.avatar = goa_contact.avatar;
+                }
+            }
+        }
     },
 
     getIcon: function (name) {
         let icon = new St.Icon ({ icon_type: St.IconType.FULLCOLOR,
                                    icon_size: CONTACT_ICON_SIZE,
                                    style_class: 'gsms-contact-icon' });
-        icon.icon_name = 'avatar-default';
-
-        return icon;
-
-        /*
-        let icon = new St.Icon ({ icon_type: St.IconType.FULLCOLOR,
-                                   icon_size: CONTACT_ICON_SIZE,
-                                   style_class: 'gsms-contact-icon' });
-        if (this.goa_contact.avatar != null)
-            icon.gicon = this.goa_contact.avatar;
-        else
+        if (this.avatar) {
+            icon.gicon = this.avatar;
+        }
+        else {
             icon.icon_name = 'avatar-default';
+        }
 
         return icon;
-        */
-    }
+    },
 });
 
 const ContactButton = new Lang.Class({
@@ -435,8 +427,13 @@ function init() {
 }
 
 function enable() {
-    let smsApplet = new SmsApplet ();
-    Main.panel.addToStatusArea('sms', smsApplet);
+    // HACK. Shell.ContactSystem takes some seconds to load, so we'll have to wait for it
+    // before initalizing this extension.
+    Mainloop.timeout_add (5000, function () {
+        goa_contacts = contactSystem.initial_search (['']);
+        let smsApplet = new SmsApplet ();
+        Main.panel.addToStatusArea('sms', smsApplet);
+    });
 }
 
 function disable() {
