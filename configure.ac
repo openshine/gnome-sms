@@ -3,6 +3,10 @@ dnl be carefull, the version needs to be in sync with your gnome shell version
 AC_INIT([gnome-sms],[0.1],[https://github.com/openshine/gnome-sms])
 AM_INIT_AUTOMAKE([1.10 dist-bzip2 no-dist-gzip foreign tar-ustar])
 
+# Enable silent rules is available
+AM_SILENT_RULES([yes])
+AM_MAINTAINER_MODE([enable])
+
 GETTEXT_PACKAGE=gnome-sms
 AC_SUBST(GETTEXT_PACKAGE)
 AC_DEFINE_UNQUOTED(GETTEXT_PACKAGE, "$GETTEXT_PACKAGE",
