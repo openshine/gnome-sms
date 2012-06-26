@@ -22,12 +22,14 @@
 const Main = imports.ui.main;
 const PanelMenu = imports.ui.panelMenu;
 const PopupMenu = imports.ui.popupMenu;
+const Tweener = imports.ui.tweener;
 
 const St = imports.gi.St;
 const Gio = imports.gi.Gio;
 const Gtk = imports.gi.Gtk;
 const Pango = imports.gi.Pango;
 const NetworkManager = imports.gi.NetworkManager;
+
 const GnomeSms = imports.gi.GnomeSms;
 
 const Lang = imports.lang;
@@ -35,15 +37,12 @@ const DBus = imports.dbus;
 const Signals = imports.signals;
 const Mainloop = imports.mainloop;
 
-const ContactSystem = imports.gi.Shell.ContactSystem;
 
 /* Global vars */
+let extension = imports.misc.extensionUtils.getCurrentExtension();
 const CONTACT_ICON_SIZE = 40;
 let smsButton;
-let extension = imports.misc.extensionUtils.getCurrentExtension();
-
-let contactSystem = ContactSystem.get_default ();
-let goa_contacts;
+let smsHelper;
 
 const ModemManagerDBusIface = {
     name: 'org.freedesktop.ModemManager',
@@ -94,6 +93,9 @@ const SmsApplet = new Lang.Class({
         this.parent(0.0, "sms");
 
         this._SmsList = {};
+
+        smsHelper = new GnomeSms.Helper ();
+        smsHelper.read_individuals();
 
         this._proxy = new ModemManagerDBus (DBus.system, 'org.freedesktop.ModemManager', '/org/freedesktop/ModemManager');
 
@@ -179,7 +181,7 @@ const SmsApplet = new Lang.Class({
             for (let i in list) {
                 let sms = list[i];
 
-                let phone = this._normalize (sms.number);
+                let phone = sms.number;
                 if (!(phone in this._SmsList)) {
                     this._SmsList[phone] = [];
                 }
@@ -189,10 +191,6 @@ const SmsApplet = new Lang.Class({
             }
         }
         this._reloadInterface ();
-    },
-
-    _normalize: function (phone) {
-        return phone;
     },
 
     _reloadInterface: function () {
@@ -287,23 +285,21 @@ const Contact = new Lang.Class ({
         this.phone = phone;
         this.avatar = null;
 
-        for (let i = 0; i < goa_contacts.length; i++) {
-            let contact = contactSystem.get_individual(goa_contacts[i]);
-            let numbers = new GnomeSms.Helper().get_phone_numbers (contact);
-            for (let x in numbers) {
-                let number = numbers[x];
-                if (number == phone) {
-                    this.avatar = contact.avatar;
-                    if (contact.full_name)
-                        this.name = contact.full_name;
-                    else if (contact.alias)
-                        this.name = contact.alias;
-                    else if (contact.nickname)
-                        this.name = contact.nickname;
-                    else
-                        this.name = phone;
-                }
-            }
+        let contact = smsHelper.search_by_phone (phone);
+        if (contact) {
+            global.log (contact.avatar);
+            this.avatar = contact.avatar;
+            if (contact.full_name)
+                this.name = contact.full_name;
+            else if (contact.alias)
+                this.name = contact.alias;
+            else if (contact.nickname)
+                this.name = contact.nickname;
+            else
+                this.name = phone;
+        }
+        else {
+            this.name = phone;
         }
     },
 
@@ -339,7 +335,13 @@ const ContactButton = new Lang.Class({
                                            vertical: true });
         this._name = new St.Label ({style_class: 'gsms-contact-details-label'});
         this._name.set_text (this.contact.name);
-        this._details.add (this._name, {expand: true, y_fill: true, y_align: St.Align.MIDDLE});
+        this._details.add (this._name);
+
+        if (this.contact.name != this.contact.phone) {
+            this._phone = new St.Label ({style_class: 'gsms-contact-details-label-small'});
+            this._phone.set_text (this.contact.phone);
+            this._details.add (this._phone);
+        }
 
         child.add (this.contact.getIcon());
         child.add_actor (this._details);
@@ -384,9 +386,6 @@ const MessageDisplay = new Lang.Class({
             let messageView = new MessageView ("incoming", message);
             this._conversationDisplay.add_actor (messageView);
         }
-
-        //message = new MessageView ("outgoing", "Hola que tal me llamo cesar y esto es una prueba de un texto ver como me las apaño para pintarlo todo seguido y que quede bien");
-        //this._conversationDisplay.add_actor (message);
     },
 
     _loadSenderInfo: function (contact) {
@@ -407,7 +406,7 @@ const MessageDisplay = new Lang.Class({
 
 const MessageView = new Lang.Class({
     Name: 'MessageView',
-    Extends: St.BoxLayout,
+    Extends: St.Table,
 
     _init: function(direction, message) {
         this.parent ();
@@ -426,8 +425,8 @@ const MessageView = new Lang.Class({
                                             gicon: Gio.icon_new_for_string(extension.path + "/left-arrow.png"),
                                             });
 
-            this.add (this._tag_icon);
-            this.add_actor (this._text);
+            this.add (this._tag_icon, { row: 0, col: 0, y_fill: true, y_align: St.Align.START } );
+            this.add (this._text, { row: 0, col: 1, x_fill: true, x_expand: true });
         }
         else {
             this._text.style_class = 'gsms-message-outgoing';
@@ -437,8 +436,8 @@ const MessageView = new Lang.Class({
                                             gicon: Gio.icon_new_for_string(extension.path + "/right-arrow.png"),
                                             });
 
-            this.add_actor (this._text);
-            this.add (this._tag_icon);
+            this.add (this._text, { row: 0, col: 0} );
+            this.add (this._tag_icon, { row: 0, col: 1} );
         }
         this._tag_icon.style_class ='gsms-message-tag';
 
@@ -454,13 +453,8 @@ function init() {
 }
 
 function enable() {
-    // HACK. Shell.ContactSystem takes some seconds to load, so we'll have to wait for it
-    // before initalizing this extension.
-    Mainloop.timeout_add (5000, function () {
-        goa_contacts = contactSystem.initial_search (['']);
-        let smsApplet = new SmsApplet ();
-        Main.panel.addToStatusArea('sms', smsApplet);
-    });
+    let smsApplet = new SmsApplet ();
+    Main.panel.addToStatusArea('sms', smsApplet);
 }
 
 function disable() {

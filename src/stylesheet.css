@@ -49,8 +49,14 @@
     border-radius: 5px;
 }
 
+.gsms-contact-details {
+}
+
 .gsms-contact-details-label {
-    padding-top: 10px;
+    font-weight: bold;
+}
+
+.gsms-contact-details-label-small {
 }
 
 .gsms-message-display {
