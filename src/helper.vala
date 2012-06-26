@@ -41,6 +41,29 @@ public class GnomeSms.Helper: GLib.Object {
         return numbers;
     }
 
+    public static bool does_apply (Individual individual, string searchString) {
+        if (searchString in individual.full_name.down()) {
+            return true;
+        }
+        else if (searchString in individual.alias.down()) {
+            return true;
+        }
+        else if (searchString in individual.nickname.down()) {
+            return true;
+        }
+        
+        foreach (var phone in individual.phone_numbers) {
+            if (searchString in phone.value.down()) {
+                return true;
+            }
+            else if (searchString in phone.get_normalised ().down()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void individuals_changed_cb (MultiMap<Individual?, Individual?> changes) {
         var added = changes.get_values ();
         var removed = changes.get_keys ();

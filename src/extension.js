@@ -28,6 +28,7 @@ const St = imports.gi.St;
 const Gio = imports.gi.Gio;
 const Gtk = imports.gi.Gtk;
 const Pango = imports.gi.Pango;
+const Clutter = imports.gi.Clutter;
 const NetworkManager = imports.gi.NetworkManager;
 
 const GnomeSms = imports.gi.GnomeSms;
@@ -230,6 +231,8 @@ const ContactList = new Lang.Class({
         this.parent ({ vertical:true,
                        style_class: 'gsms-contact-list'});
 
+        this._buttons = [];
+
         this._searchEntry = new St.Entry({ name: 'searchEntry',
                                      style_class: 'gsms-search-entry',
                                      hint_text: _("Type to search..."),
@@ -238,6 +241,9 @@ const ContactList = new Lang.Class({
         this._searchEntry.set_secondary_icon (new St.Icon({ style_class: 'search-entry-icon',
                                                       icon_name: 'edit-find',
                                                       icon_type: St.IconType.SYMBOLIC }));
+        this._text = this._searchEntry.clutter_text;
+        this._text.connect('key-press-event', Lang.bind(this, this._onKeyPress));
+        this._text.connect('text-changed', Lang.bind(this, this._onTextChanged));
 
         this.add_actor (this._searchEntry);
 
@@ -257,7 +263,38 @@ const ContactList = new Lang.Class({
             let contact = new Contact (phone);
             let contactButton = new ContactButton (contact);
             contactButton.connect ('clicked', Lang.bind (this, this._onContactButtonClicked));
+            this._buttons.push (contactButton);
             this._contactsBox.add_actor (contactButton);
+        }
+    },
+
+    _onKeyPress: function (entry, event) {
+        let symbol = event.get_key_symbol();
+        if (symbol == Clutter.Escape) {
+            this._resetSearch();
+        }
+    },
+
+    _onTextChanged: function (se, prop) {
+        let searchString = this._searchEntry.get_text();
+        this._filterContacts (searchString);
+    },
+
+    _resetSearch: function () {
+        this._searchEntry.set_text ("");
+    },
+
+    _filterContacts: function (searchString) {
+        for (let i in this._buttons) {
+            let button = this._buttons[i];
+            let contact = button.contact;
+
+            if (contact.does_apply (searchString)) {
+                button.show();
+            }
+            else {
+                button.hide();
+            }
         }
     },
 
@@ -285,16 +322,16 @@ const Contact = new Lang.Class ({
         this.phone = phone;
         this.avatar = null;
 
-        let contact = smsHelper.search_by_phone (phone);
-        if (contact) {
-            global.log (contact.avatar);
-            this.avatar = contact.avatar;
-            if (contact.full_name)
-                this.name = contact.full_name;
-            else if (contact.alias)
-                this.name = contact.alias;
-            else if (contact.nickname)
-                this.name = contact.nickname;
+        this.individual = smsHelper.search_by_phone (phone);
+        if (this.individual) {
+            global.log (this.individual.avatar);
+            this.avatar = this.individual.avatar;
+            if (this.individual.full_name)
+                this.name = this.individual.full_name;
+            else if (this.individual.alias)
+                this.name = this.individual.alias;
+            else if (this.individual.nickname)
+                this.name = this.individual.nickname;
             else
                 this.name = phone;
         }
@@ -316,6 +353,17 @@ const Contact = new Lang.Class ({
 
         return icon;
     },
+
+    does_apply: function (searchString) {
+        searchString = searchString.toLowerCase ();
+
+        if (!this.individual) {
+            return this.phone.indexOf (searchString) !== -1;
+        }
+        else {
+            return smsHelper.does_apply (this.individual, searchString);
+        }
+    }
 });
 
 const ContactButton = new Lang.Class({
