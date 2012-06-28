@@ -67,6 +67,7 @@ public class GnomeSms.Helper: GLib.Object {
     }
 
     private void individuals_changed_cb (MultiMap<Individual?, Individual?> changes) {
+        print ("UPDATE!!");
         var added = changes.get_values ();
         var removed = changes.get_keys ();
 

@@ -1,3 +1,8 @@
+.gsms-main-box {
+    height: 500px;
+    width: 700px;
+}
+
 .gsms-sms-box {
     padding-left: 10px;
     padding-right: 10px;
@@ -7,12 +12,40 @@
 .gsms-search-box {
 }
 
+.gsms-new-message-button {
+    border-radius: 5px;
+    border: 2px solid rgba(245,245,245,0.2);
+    padding: 5px;
+    spacing: 10px;
+    background-gradient-start: rgba(255, 255, 255, 0.2);
+    background-gradient-end: rgba(255, 255, 255, 0);
+    background-gradient-direction: vertical;
+}
+.gsms-new-message-button:hover{
+    color: #fff;
+    background-gradient-start: rgba(255, 255, 255, 0.3);
+    background-gradient-end: rgba(255, 255, 255, 0.1);
+}
+.gsms-new-message-button:active, 
+.gsms-new-message-button:pressed {
+    background-color: #666;
+    background-gradient-start: rgba(255, 255, 255, 0);
+    background-gradient-end: rgba(255, 255, 255, 0.2);
+}
+
+.gsms-contactsbox-separator {
+    -gradient-height: 2px;
+    -gradient-start: rgba(8,8,8,0);
+    -gradient-end: #999999;
+    -margin-horizontal: 1.5em;
+    height: 1em;
+}
+
 .gsms-contact-list {
     spacing: 5px;
 }
 
 .gsms-contact-list-scrollview {
-    height: 500px;
 }
 
 .gsms-contacts-box {
@@ -63,8 +96,6 @@
     spacing: 10px;
 }
 .gsms-message-display-scrollview {
-    width: 500px;
-    height: 500px;
 }
 
 .gsms-message-reply-entry {

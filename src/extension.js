@@ -23,6 +23,7 @@ const Main = imports.ui.main;
 const PanelMenu = imports.ui.panelMenu;
 const PopupMenu = imports.ui.popupMenu;
 const Tweener = imports.ui.tweener;
+const MessageTray = imports.ui.messageTray;
 
 const St = imports.gi.St;
 const Gio = imports.gi.Gio;
@@ -36,6 +37,7 @@ const GnomeSms = imports.gi.GnomeSms;
 const Lang = imports.lang;
 const Signals = imports.signals;
 const Mainloop = imports.mainloop;
+const Cairo = imports.cairo;
 
 const PropertiesIface = <interface name="org.freedesktop.DBus.Properties">
     <signal name="MmPropertiesChanged">
@@ -93,6 +95,7 @@ const SmsDBus = Gio.DBusProxy.makeProxyWrapper (SmsDBusIface);
 /* Global vars */
 const CONTACT_ICON_SIZE = 40;
 const MAX_RESET_ATTEMPTS = 5;
+const APP_NAME = "Gnome SMS";
 
 let extension = imports.misc.extensionUtils.getCurrentExtension();
 let smsButton;
@@ -113,6 +116,8 @@ const SmsApplet = new Lang.Class({
 
         this._resetAttempt = 0;
         this._SmsList = {};
+
+        this._notificationSystem = new NotificationSystem();
 
         smsHelper = new GnomeSms.Helper ();
         smsHelper.connect ('update_contacts', Lang.bind (this, this._onUpdateContacts));
@@ -156,12 +161,13 @@ const SmsApplet = new Lang.Class({
         this._contactList = new ContactList();
         this._contactList.connect ('selected-contact', Lang.bind (this, this._onSelectedContact));
         this._messageDisplay = new MessageDisplay ();
+        this._messageDisplay.hide();
 
-        smsBox.add_actor (this._contactList);
-        smsBox.add_actor (this._messageDisplay);
+        smsBox.add (this._contactList, { x_fill: true, y_fill: true, expand: false });
+        smsBox.add (this._messageDisplay, { x_fill: true, y_fill: true, expand: true });
 
-        mainBox.add_actor (this._deviceSelector);
-        mainBox.add_actor (smsBox);
+        mainBox.add (this._deviceSelector);
+        mainBox.add (smsBox, { x_fill: true, y_fill: true, expand: true });
     },
 
     _onDeviceRemoved: function (path) {
@@ -249,7 +255,18 @@ const SmsApplet = new Lang.Class({
 
     _onSmsReceived: function (id, complete) {
         if (complete) {
+            global.log ("RECIBIDO!!!!!!!!!!");
             sms_proxy.ListRemote (Lang.bind (this, this._onSmsList));
+            sms_proxy.GetRemote (id, Lang.bind (this, function (sms, err) {
+                if (err) {
+                    global.log ("ERROR getting sms: " + err);
+                    return;
+                }
+
+                if (sms) {
+                }
+                this._notificationSystem.notify (_("SMS received"), "Texto de la notificacion"); 
+            }));
         }
     },
 
@@ -310,6 +327,8 @@ const SmsApplet = new Lang.Class({
                 this._messageDisplay.loadMessages (contact, this._SmsList[phone]);
             }
         }
+
+        this._messageDisplay.show();
     }
 });
 
@@ -332,7 +351,7 @@ const ContactList = new Lang.Class({
         this.parent ({ vertical:true,
                        style_class: 'gsms-contact-list'});
 
-        this._buttons = [];
+        this._contactButtons = [];
 
         this._searchEntry = new St.Entry({ name: 'searchEntry',
                                      style_class: 'gsms-search-entry',
@@ -346,13 +365,15 @@ const ContactList = new Lang.Class({
         this._text.connect('key-press-event', Lang.bind(this, this._onKeyPress));
         this._text.connect('text-changed', Lang.bind(this, this._onTextChanged));
 
+        this.add_actor (this._createNewMessageButton ());
+        this.add_actor(new Separator (), { expand: true });
         this.add_actor (this._searchEntry);
 
         this._contactsBox = new St.BoxLayout ({vertical: true, style_class: 'gsms-contacts-box'});
 
         let scrollview = new St.ScrollView ({ style_class: 'gsms-contact-list-scrollview',
-                                              vscrollbar_policy: Gtk.PolicyType.NEVER,
-                                              hscrollbar_policy: Gtk.PolicyType.AUTOMATIC });
+                                              vscrollbar_policy: Gtk.PolicyType.AUTOMATIC,
+                                              hscrollbar_policy: Gtk.PolicyType.NEVER });
         scrollview.add_actor (this._contactsBox); 
         this.add (scrollview, {expand: true});
     },
@@ -365,9 +386,29 @@ const ContactList = new Lang.Class({
             let contact = new Contact (phone);
             let contactButton = new ContactButton (contact);
             contactButton.connect ('clicked', Lang.bind (this, this._onContactButtonClicked));
-            this._buttons.push (contactButton);
-            this._contactsBox.add_actor (contactButton);
+            this._contactButtons.push (contactButton);
+            this._contactsBox.add (contactButton, { x_fill: true, y_fill: true, expand: false });
         }
+    },
+
+    _createNewMessageButton: function () {
+        let newMessageButton = new St.Button ( {style_class: 'gsms-new-message-button', x_align: St.Align.START} );
+        newMessageButton.connect ('clicked', Lang.bind (this, this._onNewMessageButtonClicked));
+        let child = new St.BoxLayout ({style_class: 'gsms-contact-button-box'});
+        newMessageButton.set_child (child);
+
+        let icon = new St.Icon ({ icon_type: St.IconType.FULLCOLOR,
+                                   icon_size: CONTACT_ICON_SIZE,
+                                   style_class: 'gsms-contact-icon' });
+        icon.icon_name = 'list-add';
+
+        let label = new St.Label ({style_class: 'gsms-contact-details-label'});
+        label.set_text (_("New message..."));
+
+        child.add (icon);
+        child.add (label);
+
+        return newMessageButton;
     },
 
     _onKeyPress: function (obj, event) {
@@ -387,8 +428,8 @@ const ContactList = new Lang.Class({
     },
 
     _filterContacts: function (searchString) {
-        for (let i in this._buttons) {
-            let button = this._buttons[i];
+        for (let i in this._contactButtons) {
+            let button = this._contactButtons[i];
             let contact = button.contact;
 
             if (contact.does_apply (searchString)) {
@@ -402,6 +443,9 @@ const ContactList = new Lang.Class({
 
     _onContactButtonClicked: function (button) {
         this.emit ('selected-contact', button.contact);
+    },
+
+    _onNewMessageButtonClicked: function (button) {
     }
 });
 Signals.addSignalMethods(ContactList.prototype);
@@ -507,24 +551,23 @@ const MessageDisplay = new Lang.Class({
 
         this._senderBox = new St.BoxLayout ({style_class: 'gsms-conversation-sender'});
         this.add_actor (this._senderBox, {x_align: St.Align.MIDDLE});
-        this._senderBox.hide ();
         
         let scrollview = new St.ScrollView ({ style_class: 'gsms-message-display-scrollview',
-                                              vscrollbar_policy: Gtk.PolicyType.NEVER,
-                                              hscrollbar_policy: Gtk.PolicyType.AUTOMATIC });
+                                              vscrollbar_policy: Gtk.PolicyType.AUTOMATIC,
+                                              hscrollbar_policy: Gtk.PolicyType.NEVER});
 
         this._conversationDisplay = new St.BoxLayout ({vertical:true, style_class: 'gsms-conversation-display'});
+        scrollview.add_actor (this._conversationDisplay);
 
         this._entry = new St.Entry({ style_class: 'gsms-message-reply-entry',
                                      hint_text: _("Type your answer..."),
                                      track_hover: true,
                                      can_focus: true });
-        scrollview.add_actor (this._conversationDisplay);
 
         this._text = this._entry.clutter_text;
         this._text.connect('key-press-event', Lang.bind(this, this._onKeyPress));
 
-        this.add (scrollview);
+        this.add (scrollview, { x_fill: true, y_fill: true, expand: false });
         this.add_actor (this._entry);
     },
 
@@ -553,8 +596,6 @@ const MessageDisplay = new Lang.Class({
 
         this._senderBox.add (contact.getIcon());
         this._senderBox.add_actor (details);
-
-        this._senderBox.show();
     },
 
     _sendMessage: function () {
@@ -632,6 +673,59 @@ const MessageView = new Lang.Class({
         this._text.set_text (text);
     }
 });
+
+const NotificationSystem = new Lang.Class ({
+    Name: 'NotificationSystem',
+
+    _init: function () {
+        this._source = new MessageTray.Source(APP_NAME, 'phone', St.IconType.SYMBOLIC);
+        Main.messageTray.add(this._source);
+    },
+
+    notify: function (title, text, icon) {
+        if (!icon) {
+            icon = new St.Icon({ icon_name: 'phone',
+                                 icon_size: this._source.ICON_SIZE });
+        }
+
+        this._notification = new MessageTray.Notification(this._source, title, text, { icon: icon });
+        this._source.notify(this._notification);
+    },
+});
+
+const Separator = new Lang.Class({
+    Name: 'Separator',
+    Extends: St.DrawingArea,
+
+    _init: function () {
+        this.parent();
+        this.style_class = 'gsms-contactsbox-separator';
+        this.connect('repaint', Lang.bind(this, this._onRepaint));
+    },
+
+    _onRepaint: function(area) {
+        let cr = area.get_context();
+        let themeNode = area.get_theme_node();
+        let [width, height] = area.get_surface_size();
+        let margin = themeNode.get_length('-margin-horizontal');
+        let gradientHeight = themeNode.get_length('-gradient-height');
+        let startColor = themeNode.get_color('-gradient-start');
+        let endColor = themeNode.get_color('-gradient-end');
+
+        global.log ("MARGIN: " + margin);
+
+        let gradientWidth = (width - margin * 2);
+        let gradientOffset = (height - gradientHeight) / 2;
+        let pattern = new Cairo.LinearGradient(margin, gradientOffset, width - margin, gradientOffset + gradientHeight);
+        pattern.addColorStopRGBA(0, startColor.red / 255, startColor.green / 255, startColor.blue / 255, startColor.alpha / 255);
+        pattern.addColorStopRGBA(0.5, endColor.red / 255, endColor.green / 255, endColor.blue / 255, endColor.alpha / 255);
+        pattern.addColorStopRGBA(1, startColor.red / 255, startColor.green / 255, startColor.blue / 255, startColor.alpha / 255);
+        cr.setSource(pattern);
+        cr.rectangle(margin, gradientOffset, gradientWidth, gradientHeight);
+        cr.fill();
+    }
+});
+
 
 function init() {
 }
