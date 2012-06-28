@@ -34,58 +34,76 @@ const NetworkManager = imports.gi.NetworkManager;
 const GnomeSms = imports.gi.GnomeSms;
 
 const Lang = imports.lang;
-const DBus = imports.dbus;
 const Signals = imports.signals;
 const Mainloop = imports.mainloop;
 
+const PropertiesIface = <interface name="org.freedesktop.DBus.Properties">
+    <signal name="MmPropertiesChanged">
+        <arg type="s" direction="out" />
+        <arg type="a{sv}" direction="out" />
+    </signal>
+</interface>;
+const PropertiesDBus = Gio.DBusProxy.makeProxyWrapper(PropertiesIface);
+
+const ModemManagerDBusIface = <interface name="org.freedesktop.ModemManager">
+    <method name="EnumerateDevices">
+        <arg type="ao" direction="out" />
+    </method>
+    <signal name="DeviceAdded">
+        <arg type="o" direction="out" />
+    </signal>
+    <signal name="DeviceRemoved">
+        <arg type="o" direction="out" />
+    </signal>
+</interface>;
+const ModemManagerDBus = Gio.DBusProxy.makeProxyWrapper (ModemManagerDBusIface);
+
+const ModemDBusIface = <interface name="org.freedesktop.ModemManager.Modem">
+    <method name="Enable">
+        <arg type="b" direction="in" />
+    </method>
+    <property name="Type" type="u" access="read" />
+    <property name="Enabled" type="b" access="read" />
+</interface>;
+const ModemDBus = Gio.DBusProxy.makeProxyWrapper (ModemDBusIface);
+
+const SmsDBusIface = <interface name="org.freedesktop.ModemManager.Modem.Gsm.SMS">
+    <method name="List">
+        <arg type="aa{sv}" direction="out" />
+    </method>
+    <method name="Get">
+        <arg type="i" direction="in" />
+        <arg type="a{sv}" direction="out" />
+    </method>
+    <method name="Send">
+        <arg type="{sv}" direction="in" />
+        <arg type="au" direction="out" />
+    </method>
+    <signal name="SmsReceived">
+        <arg type="i" direction="out" />
+        <arg type="b" direction="out" />
+    </signal>
+    <signal name="Completed">
+        <arg type="i" direction="out" />
+        <arg type="b" direction="out" />
+    </signal>
+</interface>;
+const SmsDBus = Gio.DBusProxy.makeProxyWrapper (SmsDBusIface);
 
 /* Global vars */
-let extension = imports.misc.extensionUtils.getCurrentExtension();
 const CONTACT_ICON_SIZE = 40;
+const MAX_RESET_ATTEMPTS = 5;
+
+let extension = imports.misc.extensionUtils.getCurrentExtension();
 let smsButton;
 let smsHelper;
 
-const ModemManagerDBusIface = {
-    name: 'org.freedesktop.ModemManager',
-    properties: [],
-    methods: [
-        { name: 'EnumerateDevices', inSignature: '',  outSignature: 'ao' },
-    ],
-    signals: [
-        { name: 'DeviceAdded', inSignature: 'o' },
-        { name: 'DeviceRemoved', inSignature: 'o' },
-    ]
-};
-
-const ModemDBusIface = {
-    name: 'org.freedesktop.ModemManager.Modem',
-    properties: [
-        { name: 'Type', signature: 'u', access: 'read' },
-        { name: 'State', signature: 'u', access: 'read' },
-    ],
-    methods: [
-        { name: 'Enable', inSignature: 'b', outSignature: '' },
-    ],
-    signals: []
-};
-
-const SmsDBusIface = {
-    name: 'org.freedesktop.ModemManager.Modem.Gsm.SMS',
-    properties: [],
-    methods: [
-        { name: 'List', inSignature: '',  outSignature: 'aa{sv}' },
-        { name: 'Get', inSignature: 'i', outSignature: 'a{sv}' },
-    ],
-    signals: [
-        { name: 'SmsReceived', inSignature: 'ib' },
-        { name: 'Completed', inSignature: 'ib' },
-    ]
-};
+/* DBus proxy objects */
+let properties_proxy;
+let modem_manager_proxy;
+let modem_proxy;
+let sms_proxy;
  
-let ModemManagerDBus = DBus.makeProxyClass (ModemManagerDBusIface);
-let ModemDBus = DBus.makeProxyClass (ModemDBusIface);
-let SmsDBus = DBus.makeProxyClass (SmsDBusIface);
-
 const SmsApplet = new Lang.Class({
     Name: 'SmsApplet',
     Extends: PanelMenu.Button,
@@ -93,19 +111,26 @@ const SmsApplet = new Lang.Class({
     _init: function() {
         this.parent(0.0, "sms");
 
+        this._resetAttempt = 0;
         this._SmsList = {};
 
         smsHelper = new GnomeSms.Helper ();
+        smsHelper.connect ('update_contacts', Lang.bind (this, this._onUpdateContacts));
         smsHelper.read_individuals();
 
-        this._proxy = new ModemManagerDBus (DBus.system, 'org.freedesktop.ModemManager', '/org/freedesktop/ModemManager');
+        modem_manager_proxy = new ModemManagerDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', '/org/freedesktop/ModemManager');
 
         this._createMainButton();
         this._createMainPanel();
 
         this._loadDevices();
-        this._proxy.connect ('DeviceAdded', Lang.bind (this, this._onDeviceAdded));
-        this._proxy.connect ('DeviceRemoved', Lang.bind (this, this._onDeviceRemoved));
+
+        modem_manager_proxy.connectSignal ('DeviceAdded', Lang.bind (this, function (proxy, sender, [path]) {
+            this._onDeviceAdded (path);
+        }));
+        modem_manager_proxy.connectSignal ('DeviceRemoved', Lang.bind (this, function (proxy, sender, [path]) {
+            this._onDeviceRemoved (path);
+        }));
     },
 
     _createMainButton: function () {
@@ -140,34 +165,86 @@ const SmsApplet = new Lang.Class({
     },
 
     _onDeviceRemoved: function (path) {
+        global.log ("DEVICE REMOVED: " + path);
         this._loadDevices ();
     },
 
     _onDeviceAdded: function (path) {
+        global.log ("DEVICE ADDED: " + path);
         this._loadDevices ();
     },
 
     _loadDevices: function () {
-        this._proxy.EnumerateDevicesRemote(Lang.bind(this, this._onGetModems));
+        global.log ("LOADING DEVICES");
+        modem_manager_proxy.EnumerateDevicesRemote(Lang.bind(this, this._onGetModems));
     },
 
-    _onGetModems: function (modems) {
-        if (modems.length > 0) {
-            this._modem_path = modems[0];
-            global.log ("MODEM: " + this._modem_path);
-            let modem_proxy = new ModemDBus (DBus.system, 'org.freedesktop.ModemManager', this._modem_path);
-            global.log ("TYPE: " + modem_proxy.Type);
-            global.log ("STATE: " + modem_proxy.State);
+    _onGetModems: function (modems, err) {
+        if (err) {
+            global.log ("ERROR loading modems: " + err);
+            return;
+        }
+        if (modems) {
+            modems = modems[0];
+            if (modems.length > 0) {
+                global.log ("CARGANDO " + modems[0]);
+                this._init_modem (modems[0]);
+                return;
+            }
+        }
+
+        // If there's no modem, we empty the message list
+        global.log ("NO MODEMS AVAILABLE");
+        this._SmsList= {};
+        this._reloadInterface ();
+    },
+
+    _init_modem: function (modem_path) {
+            global.log ("MODEM: " + modem_path);
+
+            properties_proxy = new PropertiesDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
+            properties_proxy.connectSignal ('MmPropertiesChanged', Lang.bind (this, function (proxy, sender, [iface, properties]) {
+                this._onModemPropertiesChanged (iface, properties);
+            }));
+
+            sms_proxy = new SmsDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
+            sms_proxy.connectSignal ('SmsReceived', Lang.bind (this, function (proxy, sender, [id, complete]) {
+                this._onSmsReceived (id, complete);
+            }));
+            sms_proxy.connectSignal ('Completed', Lang.bind (this, function (proxy, sender, [id, complete]) {
+                this._onSmsReceived (id, complete);
+            }));
+
+            modem_proxy = new ModemDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
             modem_proxy.EnableRemote (true, Lang.bind (this, this._onModemEnabled));
+    },
+
+    _onModemEnabled: function ([], err) {
+        if (err) {
+            global.log ("ERROR enabling modem: " + err);
+            this._resetDevice ();
+            return;
+        }
+        if (modem_proxy.Enabled) {
+            global.log ("MODEM ENABLED");
+
+            this._resetAttempt = 0;
+            sms_proxy.ListRemote (Lang.bind (this, this._onSmsList));
+        }
+        else {
+            this._resetDevice ();
         }
     },
 
-    _onModemEnabled: function () {
-        global.log ("MODEM ENABLED");
-        let sms_proxy = new SmsDBus (DBus.system, 'org.freedesktop.ModemManager', this._modem_path);
-        sms_proxy.ListRemote (Lang.bind (this, this._onSmsList));
-        sms_proxy.connect ('SmsReceived', Lang.bind (this, this._onSmsReceived));
-        sms_proxy.connect ('Completed', Lang.bind (this, this._onSmsReceived));
+    _onModemDisabled: function ([], err) {
+        modem_proxy.EnableRemote (true, Lang.bind (this, this._onModemEnabled));
+    },
+
+    _onModemPropertiesChanged: function (iface, properties) {
+        if (properties.UnlockRequired) {
+            this._resetAttempt = 0;
+            this._resetDevice ();
+        }
     },
 
     _onSmsReceived: function (id, complete) {
@@ -176,21 +253,45 @@ const SmsApplet = new Lang.Class({
         }
     },
 
-    _onSmsList: function (list) {
+    _onSmsList: function (list, err) {
+        if (err) {
+            global.log ("ERROR loading sms list: " + err);
+            this._resetDevice ();
+            return;
+        }
+
         this._SmsList= {};
         if (list) {
+            list = list[0];
             for (let i in list) {
                 let sms = list[i];
 
-                let phone = sms.number;
+                let phone = sms.number.get_string()[0];
+                let timestamp = sms.timestamp.get_string()[0];
+                let text = sms.text.get_string()[0];
+
                 if (!(phone in this._SmsList)) {
                     this._SmsList[phone] = [];
                 }
-
-                let message = new Message (phone, sms.timestamp, sms.text);
+                let message = new Message (phone, timestamp, text);
                 this._SmsList[phone].push (message);
             }
         }
+        this._reloadInterface ();
+    },
+
+    _resetDevice: function () {
+        this._resetAttempt += 1;
+        if (this._resetAttempt > MAX_RESET_ATTEMPTS) {
+            global.log ("MAX RESET ATTEMPTS ACHIEVED. STOP TRYING");
+            return;
+        }
+
+        global.log ("RESETING DEVICE. ATTEMPT: " + this._resetAttempt);
+        modem_proxy.EnableRemote (false, Lang.bind (this, this._onModemDisabled));
+    },
+
+    _onUpdateContacts: function () {
         this._reloadInterface ();
     },
 
@@ -257,6 +358,7 @@ const ContactList = new Lang.Class({
     },
 
     loadContacts: function (smsList) {
+        this._contactsBox.remove_all_children();
         this._smsList = smsList;
 
         for (let phone in this._smsList) {
@@ -268,7 +370,7 @@ const ContactList = new Lang.Class({
         }
     },
 
-    _onKeyPress: function (entry, event) {
+    _onKeyPress: function (obj, event) {
         let symbol = event.get_key_symbol();
         if (symbol == Clutter.Escape) {
             this._resetSearch();
@@ -324,7 +426,6 @@ const Contact = new Lang.Class ({
 
         this.individual = smsHelper.search_by_phone (phone);
         if (this.individual) {
-            global.log (this.individual.avatar);
             this.avatar = this.individual.avatar;
             if (this.individual.full_name)
                 this.name = this.individual.full_name;
@@ -406,6 +507,7 @@ const MessageDisplay = new Lang.Class({
 
         this._senderBox = new St.BoxLayout ({style_class: 'gsms-conversation-sender'});
         this.add_actor (this._senderBox, {x_align: St.Align.MIDDLE});
+        this._senderBox.hide ();
         
         let scrollview = new St.ScrollView ({ style_class: 'gsms-message-display-scrollview',
                                               vscrollbar_policy: Gtk.PolicyType.NEVER,
@@ -418,6 +520,10 @@ const MessageDisplay = new Lang.Class({
                                      track_hover: true,
                                      can_focus: true });
         scrollview.add_actor (this._conversationDisplay);
+
+        this._text = this._entry.clutter_text;
+        this._text.connect('key-press-event', Lang.bind(this, this._onKeyPress));
+
         this.add (scrollview);
         this.add_actor (this._entry);
     },
@@ -448,8 +554,38 @@ const MessageDisplay = new Lang.Class({
         this._senderBox.add (contact.getIcon());
         this._senderBox.add_actor (details);
 
+        this._senderBox.show();
+    },
 
-    }
+    _sendMessage: function () {
+        if (sms_proxy) {
+            phone = '663273481';
+            text = this._entry.get_text ();
+
+            let message = {};
+            message['number'] = phone;
+            message['text'] = text;
+
+            sms_proxy.SendRemote(message, Lang.bind(this, this._onSmsSend));
+        }
+    },
+
+    _onSmsSend: function ([], err) {
+        if (err) {
+            global.log ("ERROR sending sms: " + err);
+            return;
+        }
+
+        global.log ("SMS sent ok");
+    },
+
+    _onKeyPress: function (obj, event) {
+        let symbol = event.get_key_symbol();
+        if (symbol == Clutter.Return || symbol == Clutter.KP_Enter) {
+            this._sendMessage ();
+            this._entry.set_text ("");
+        }
+    },
 });
 
 const MessageView = new Lang.Class({

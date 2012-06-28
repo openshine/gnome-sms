@@ -3,6 +3,8 @@ using Gee;
 
 public class GnomeSms.Helper: GLib.Object {
 
+    public signal void update_contacts ();
+
     private HashMap<string, Individual> individuals = new HashMap<string, Individual> ();
 
     public void read_individuals () {
@@ -68,16 +70,24 @@ public class GnomeSms.Helper: GLib.Object {
         var added = changes.get_values ();
         var removed = changes.get_keys ();
 
+        bool update = false;
+
         foreach (Individual i in added)
         {
             individuals.set (i.id, i);
+            update = true;
         }
 
         foreach (var i in removed)
         {
             if (i != null) {
                 individuals.unset (i.id);
+                update = true;
             }
+        }
+
+        if (update) {
+            update_contacts ();
         }
     }
 }
