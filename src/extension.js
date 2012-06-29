@@ -115,6 +115,8 @@ const SmsApplet = new Lang.Class({
     _init: function() {
         this.parent(0.0, "sms");
 
+        this.actor.hide();
+
         this._resetAttempt = 0;
         this._SmsList = {};
         this._notificationSystem = new NotificationSystem();
@@ -201,6 +203,7 @@ const SmsApplet = new Lang.Class({
 
         // If there's no modem, we empty the message list
         global.log ("NO MODEMS AVAILABLE");
+        this.actor.hide();
         this._SmsList= {};
         this._reloadInterface ();
     },
@@ -236,6 +239,8 @@ const SmsApplet = new Lang.Class({
 
             this._resetAttempt = 0;
             sms_proxy.ListRemote (Lang.bind (this, this._onSmsList));
+
+            this.actor.show ();
         }
         else {
             this._resetDevice ();
