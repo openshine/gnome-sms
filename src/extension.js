@@ -24,10 +24,11 @@ const PanelMenu = imports.ui.panelMenu;
 const PopupMenu = imports.ui.popupMenu;
 const Tweener = imports.ui.tweener;
 const MessageTray = imports.ui.messageTray;
+const ModalDialog = imports.ui.modalDialog;
 
 const St = imports.gi.St;
-const Gio = imports.gi.Gio;
 const Gtk = imports.gi.Gtk;
+const Gio = imports.gi.Gio;
 const Pango = imports.gi.Pango;
 const Clutter = imports.gi.Clutter;
 const NetworkManager = imports.gi.NetworkManager;
@@ -55,7 +56,7 @@ const ModemManagerDBusIface = <interface name="org.freedesktop.ModemManager">
         <arg type="o" direction="out" />
     </signal>
     <signal name="DeviceRemoved">
-        <arg type="o" direction="out" />
+       <arg type="o" direction="out" />
     </signal>
 </interface>;
 const ModemManagerDBus = Gio.DBusProxy.makeProxyWrapper (ModemManagerDBusIface);
@@ -116,7 +117,6 @@ const SmsApplet = new Lang.Class({
 
         this._resetAttempt = 0;
         this._SmsList = {};
-
         this._notificationSystem = new NotificationSystem();
 
         smsHelper = new GnomeSms.Helper ();
@@ -264,8 +264,8 @@ const SmsApplet = new Lang.Class({
                 }
 
                 if (sms) {
+                    this._notificationSystem.notify (_("SMS received"), "Texto de la notificacion");
                 }
-                this._notificationSystem.notify (_("SMS received"), "Texto de la notificacion"); 
             }));
         }
     },
@@ -446,18 +446,95 @@ const ContactList = new Lang.Class({
     },
 
     _onNewMessageButtonClicked: function (button) {
+        let dialog = new NewMessageDialog ();
+        dialog.open();
     }
 });
 Signals.addSignalMethods(ContactList.prototype);
+
+const NewMessageDialog = new Lang.Class ({
+    Name: 'NewMessageDialog',
+    Extends: ModalDialog.ModalDialog,
+
+    _init: function () {
+        this.parent ();
+
+        let mainContentLayout = new St.BoxLayout ({ style_class: "gsms-new-message-layout",
+                                                    vertical: true });
+        this.contentLayout.add(mainContentLayout, { x_fill: true, y_fill: false });
+
+        let titleLabel = new St.Label ({ text: _("Write a new SMS:"),
+                                     style_class: 'gsms-new-message-title' });
+        mainContentLayout.add (titleLabel);
+
+        this.destinyEntry = new St.Entry({ style_class: "gsms-new-message-entry",
+                                           hint_text: _("To..."),
+                                           track_hover: true,
+                                           can_focus: true });
+        mainContentLayout.add (this.destinyEntry );
+
+        this.textEntry = new St.Entry({ style_class: "gsms-new-message-entry",
+                                        hint_text: _("Write here your message"),
+                                        track_hover: true,
+                                        can_focus: true });
+        mainContentLayout.add (this.textEntry );
+
+        this.setButtons([{ label: _("Cancel"),
+                           action: Lang.bind(this, this._onCancelButtonPressed),
+                           key:    Clutter.Escape
+                         },
+                         { label:  _("Send"),
+                           action: Lang.bind(this, this._onSendButtonPressed)
+                         }]);
+    },
+
+    _onCancelButtonPressed: function (button, event) {
+        this.close(global.get_current_time());
+    },
+
+    _onSendButtonPressed: function (button, event) {
+        this.close(global.get_current_time());
+    },
+});
 
 const Message = new Lang.Class ({
     Name: 'Message',
 
     _init: function (phone, date, text) {
         this.phone = phone;
-        this.date = date;
+        this.date = this._parseDate (date);
         this.text = text;
     },
+
+    _parseDate: function (date) {
+        // Date format: y/m/d,H:i:sO
+        let match = date.match (/(\d{2})\/(\d{2})\/(\d{2})\,(\d{2})\:(\d{2})\:(\d{2})(\+)?(\d*)?/);
+        if (!match)
+            return "";
+
+        let year = 2000 + parseInt(match[1]);
+        let month = parseInt(match[2])-1;
+        let day = parseInt(match[3]);
+        let hour = parseInt(match[4]);
+        let minute = parseInt(match[5]);
+        let second = parseInt(match[6]);
+
+        let gmt = null;
+        if (match.length > 7) {
+            let sign = match[7];
+            let gmt = match[8];
+
+            if (sign == '-') {
+                hour -= parseInt (gmt);
+            }
+            else if (sign == '+') {
+                hour += parseInt (gmt);
+            }
+        }
+
+        let parsedDate = new Date (Date.UTC (year, month, day, hour, minute, second));
+        return parsedDate.toLocaleString();
+    }
 });
 
 const Contact = new Lang.Class ({
@@ -650,8 +727,8 @@ const MessageView = new Lang.Class({
                                             gicon: Gio.icon_new_for_string(extension.path + "/left-arrow.png"),
                                             });
 
-            this.add (this._tag_icon, { row: 0, col: 0, y_fill: true, y_align: St.Align.START } );
-            this.add (this._text, { row: 0, col: 1, x_fill: true, x_expand: true });
+            this.add (this._tag_icon, { row: 0, col: 0, row_span: 2, y_fill: false, y_expand: false, y_align: St.Align.START } );
+            this.add (this._text, { row: 0, col: 1, x_fill: false, x_align: St.Align.START });
         }
         else {
             this._text.style_class = 'gsms-message-outgoing';
@@ -662,16 +739,17 @@ const MessageView = new Lang.Class({
                                             });
 
             this.add (this._text, { row: 0, col: 0} );
-            this.add (this._tag_icon, { row: 0, col: 1} );
+            this.add (this._tag_icon, { row: 0, col: 1, row_span: 2, y_fill: false, y_expand: false, y_align: St.Align.START } );
         }
         this._tag_icon.style_class ='gsms-message-tag';
 
-        this.set_text (message.text);
-    },
+        this._text.set_text (message.text);
 
-    set_text: function (text) {
-        this._text.set_text (text);
-    }
+        this._date = new St.Label ();
+        this._date.style_class = 'gsms-message-date';
+        this._date.set_text (message.date);
+        this.add (this._date, { row: 1, col: 1, x_fill: true, x_align: St.Align.END } );
+    },
 });
 
 const NotificationSystem = new Lang.Class ({
@@ -711,8 +789,6 @@ const Separator = new Lang.Class({
         let gradientHeight = themeNode.get_length('-gradient-height');
         let startColor = themeNode.get_color('-gradient-start');
         let endColor = themeNode.get_color('-gradient-end');
-
-        global.log ("MARGIN: " + margin);
 
         let gradientWidth = (width - margin * 2);
         let gradientOffset = (height - gradientHeight) / 2;

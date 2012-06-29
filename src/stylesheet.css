@@ -98,6 +98,17 @@
 .gsms-message-display-scrollview {
 }
 
+.gsms-new-message-layout {
+    font-weight: bold;
+    text-align: center;
+    color: #bbb;
+}
+
+.gsms-new-message-layout {
+    spacing: 10px;
+}
+
+.gsms-new-message-entry,
 .gsms-message-reply-entry {
     padding: 4px 12px;
     border-radius: 17px;
@@ -108,6 +119,10 @@
     background-gradient-direction: vertical;
     border: 2px solid rgba(245,245,245,0.2);
     width: 250px;
+}
+
+.gsms-new-message-entry {
+    width: 200px;
 }
 
 .gsms-conversation-sender {
@@ -132,6 +147,13 @@
 }
 
 .gsms-message-tag {
+    padding-top: 5px;
+}
+
+.gsms-message-date {
+    text-align: right;
+    color: #333;
+    font-size: 0.8em;
 }
 
 .gsms-message-incoming {
