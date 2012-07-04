@@ -461,76 +461,6 @@ const ContactList = new Lang.Class({
 });
 Signals.addSignalMethods(ContactList.prototype);
 
-const NewMessageDialog = new Lang.Class ({
-    Name: 'NewMessageDialog',
-    Extends: ModalDialog.ModalDialog,
-
-    _init: function (params) {
-        this.parent (params);
-
-        let mainContentLayout = new St.BoxLayout ({ style_class: "gsms-new-message-layout",
-                                                    vertical: true });
-        this.contentLayout.add(mainContentLayout, { x_fill: true, y_fill: false });
-
-        let titleLabel = new St.Label ({ text: _("Write a new SMS:"),
-                                     style_class: 'gsms-new-message-title' });
-        mainContentLayout.add (titleLabel);
-
-        this.destinyEntry = new ContactsEntry ({ style_class: "gsms-new-message-entry",
-                                                 hint_text: _("To..."),
-                                                 track_hover: true,
-                                                 can_focus: true });
-        this.destinyEntry.connect ("phone_added", Lang.bind (this, this._onPhoneAdded));
-        this.destinyEntry.connect ("contact_selected", Lang.bind (this, this._onContactSelected));
-        mainContentLayout.add (this.destinyEntry );
-
-        this.destinyBox = new St.BoxLayout ( { style_class: "gsms-new-message-contact-box" });
-        mainContentLayout.add (this.destinyBox);
-
-        this.textEntry = new St.Entry({ style_class: "gsms-new-message-entry",
-                                        hint_text: _("Write here your message"),
-                                        track_hover: true,
-                                        can_focus: true });
-        this.textEntry.clutter_text.single_line_mode = false;
-        mainContentLayout.add (this.textEntry );
-
-        this._charCounter = new CharCounter (this.textEntry);
-        this._charCounter.style_class = 'gsms-char-counter';
-        mainContentLayout.add (this._charCounter);
-
-        this.setButtons([{ label: _("Cancel"),
-                           action: Lang.bind(this, this._onCancelButtonPressed),
-                           key:    Clutter.Escape
-                         },
-                         { label:  _("Send"),
-                           action: Lang.bind(this, this._onSendButtonPressed)
-                         }]);
-    },
-
-    _onPhoneAdded: function (entry, phone) {
-        let button = new St.Button ( { label: phone, reactive: true, style_class: 'gsms-new-message-contact-button' } );
-//        button.connect ('clicked', Lang.bind (this, this._onNewMessageButtonClicked));
-        this.destinyBox.add (button);
-    },
-
-    _onContactSelected: function (entry, contact, phone) {
-        let name = smsHelper.get_name (contact);
-        if (name == "")
-            name == phone; 
-        let button = new St.Button ( { label: name, reactive: true, style_class: 'gsms-new-message-contact-button' } );
-//        button.connect ('clicked', Lang.bind (this, this._onNewMessageButtonClicked));
-        this.destinyBox.add (button);
-    },
-
-    _onCancelButtonPressed: function (button, event) {
-        this.close(global.get_current_time());
-    },
-
-    _onSendButtonPressed: function (button, event) {
-        this.close(global.get_current_time());
-    },
-});
-
 const Message = new Lang.Class ({
     Name: 'Message',
 
@@ -820,6 +750,76 @@ const MessageView = new Lang.Class({
         this._date.style_class = 'gsms-message-date';
         this._date.set_text (message.date);
         this.add (this._date, { row: 1, col: 1, x_fill: true, x_align: St.Align.END } );
+    },
+});
+
+const NewMessageDialog = new Lang.Class ({
+    Name: 'NewMessageDialog',
+    Extends: ModalDialog.ModalDialog,
+
+    _init: function (params) {
+        this.parent (params);
+
+        let mainContentLayout = new St.BoxLayout ({ style_class: "gsms-new-message-layout",
+                                                    vertical: true });
+        this.contentLayout.add(mainContentLayout, { x_fill: true, y_fill: false });
+
+        let titleLabel = new St.Label ({ text: _("Write a new SMS:"),
+                                     style_class: 'gsms-new-message-title' });
+        mainContentLayout.add (titleLabel);
+
+        this.destinyEntry = new ContactsEntry ({ style_class: "gsms-new-message-entry",
+                                                 hint_text: _("To..."),
+                                                 track_hover: true,
+                                                 can_focus: true });
+        this.destinyEntry.connect ("phone_added", Lang.bind (this, this._onPhoneAdded));
+        this.destinyEntry.connect ("contact_selected", Lang.bind (this, this._onContactSelected));
+        mainContentLayout.add (this.destinyEntry );
+
+        this.destinyBox = new St.BoxLayout ( { style_class: "gsms-new-message-contact-box" });
+        mainContentLayout.add (this.destinyBox);
+
+        this.textEntry = new St.Entry({ style_class: "gsms-new-message-entry",
+                                        hint_text: _("Write here your message"),
+                                        track_hover: true,
+                                        can_focus: true });
+        this.textEntry.clutter_text.single_line_mode = false;
+        mainContentLayout.add (this.textEntry );
+
+        this._charCounter = new CharCounter (this.textEntry);
+        this._charCounter.style_class = 'gsms-char-counter';
+        mainContentLayout.add (this._charCounter);
+
+        this.setButtons([{ label: _("Cancel"),
+                           action: Lang.bind(this, this._onCancelButtonPressed),
+                           key:    Clutter.Escape
+                         },
+                         { label:  _("Send"),
+                           action: Lang.bind(this, this._onSendButtonPressed)
+                         }]);
+    },
+
+    _onPhoneAdded: function (entry, phone) {
+        let button = new St.Button ( { label: phone, reactive: true, style_class: 'gsms-new-message-contact-button' } );
+//        button.connect ('clicked', Lang.bind (this, this._onNewMessageButtonClicked));
+        this.destinyBox.add (button);
+    },
+
+    _onContactSelected: function (entry, contact, phone) {
+        let name = smsHelper.get_name (contact);
+        if (name == "")
+            name == phone; 
+        let button = new St.Button ( { label: name, reactive: true, style_class: 'gsms-new-message-contact-button' } );
+//        button.connect ('clicked', Lang.bind (this, this._onNewMessageButtonClicked));
+        this.destinyBox.add (button);
+    },
+
+    _onCancelButtonPressed: function (button, event) {
+        this.close(global.get_current_time());
+    },
+
+    _onSendButtonPressed: function (button, event) {
+        this.close(global.get_current_time());
     },
 });
 
