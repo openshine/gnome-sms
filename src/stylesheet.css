@@ -92,6 +92,12 @@
 .gsms-contact-details-label-small {
 }
 
+.gsms-char-counter {
+    color: #bbb;
+    text-align: right;
+    font-size: 0.8em;
+}
+
 .gsms-message-display {
     spacing: 10px;
 }
@@ -124,6 +130,33 @@
 .gsms-new-message-entry {
     width: 200px;
 }
+
+.gsms-new-message-contact-box {
+    spacing: 5px;
+}
+
+.gsms-new-message-contact-button {
+    border-radius: 5px;
+    border: 2px solid rgba(245,245,245,0.2);
+    padding: 5px;
+    spacing: 10px;
+    background-gradient-start: rgba(255, 255, 255, 0.2);
+    background-gradient-end: rgba(255, 255, 255, 0);
+    background-gradient-direction: vertical;
+}
+.gsms-new-message-contact-button:hover{
+    color: #fff;
+    background-gradient-start: rgba(255, 255, 255, 0.3);
+    background-gradient-end: rgba(255, 255, 255, 0.1);
+}
+.gsms-new-message-contact-button:active, 
+.gsms-new-message-contact-button:pressed {
+    background-color: #666;
+    background-gradient-start: rgba(255, 255, 255, 0);
+    background-gradient-end: rgba(255, 255, 255, 0.2);
+}
+
+
 
 .gsms-conversation-sender {
     border-radius: 5px;

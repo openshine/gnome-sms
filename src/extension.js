@@ -22,7 +22,6 @@
 const Main = imports.ui.main;
 const PanelMenu = imports.ui.panelMenu;
 const PopupMenu = imports.ui.popupMenu;
-const Tweener = imports.ui.tweener;
 const MessageTray = imports.ui.messageTray;
 const ModalDialog = imports.ui.modalDialog;
 
@@ -37,7 +36,6 @@ const GnomeSms = imports.gi.GnomeSms;
 
 const Lang = imports.lang;
 const Signals = imports.signals;
-const Mainloop = imports.mainloop;
 const Cairo = imports.cairo;
 
 const PropertiesIface = <interface name="org.freedesktop.DBus.Properties">
@@ -96,7 +94,13 @@ const SmsDBus = Gio.DBusProxy.makeProxyWrapper (SmsDBusIface);
 /* Global vars */
 const CONTACT_ICON_SIZE = 40;
 const MAX_RESET_ATTEMPTS = 5;
+const MIN_CONTACT_SEARCH_LENGTH = 2;
+const MAX_CONTACT_SEARCH_DISPLAY = 10;
 const APP_NAME = "Gnome SMS";
+const ENCODING_GSM7 = 'gsm7';
+const ENCODING_UCS2 = 'ucs2';
+const MAX_SMS_LENGTH_GSM7 = 155;
+const MAX_SMS_LENGTH_UCS2 = 70;
 
 let extension = imports.misc.extensionUtils.getCurrentExtension();
 let smsButton;
@@ -115,7 +119,7 @@ const SmsApplet = new Lang.Class({
     _init: function() {
         this.parent(0.0, "sms");
 
-        this.actor.hide();
+        //this.actor.hide();
 
         this._resetAttempt = 0;
         this._SmsList = {};
@@ -203,7 +207,7 @@ const SmsApplet = new Lang.Class({
 
         // If there's no modem, we empty the message list
         global.log ("NO MODEMS AVAILABLE");
-        this.actor.hide();
+        //this.actor.hide();
         this._SmsList= {};
         this._reloadInterface ();
     },
@@ -461,8 +465,8 @@ const NewMessageDialog = new Lang.Class ({
     Name: 'NewMessageDialog',
     Extends: ModalDialog.ModalDialog,
 
-    _init: function () {
-        this.parent ();
+    _init: function (params) {
+        this.parent (params);
 
         let mainContentLayout = new St.BoxLayout ({ style_class: "gsms-new-message-layout",
                                                     vertical: true });
@@ -472,17 +476,27 @@ const NewMessageDialog = new Lang.Class ({
                                      style_class: 'gsms-new-message-title' });
         mainContentLayout.add (titleLabel);
 
-        this.destinyEntry = new St.Entry({ style_class: "gsms-new-message-entry",
-                                           hint_text: _("To..."),
-                                           track_hover: true,
-                                           can_focus: true });
+        this.destinyEntry = new ContactsEntry ({ style_class: "gsms-new-message-entry",
+                                                 hint_text: _("To..."),
+                                                 track_hover: true,
+                                                 can_focus: true });
+        this.destinyEntry.connect ("phone_added", Lang.bind (this, this._onPhoneAdded));
+        this.destinyEntry.connect ("contact_selected", Lang.bind (this, this._onContactSelected));
         mainContentLayout.add (this.destinyEntry );
+
+        this.destinyBox = new St.BoxLayout ( { style_class: "gsms-new-message-contact-box" });
+        mainContentLayout.add (this.destinyBox);
 
         this.textEntry = new St.Entry({ style_class: "gsms-new-message-entry",
                                         hint_text: _("Write here your message"),
                                         track_hover: true,
                                         can_focus: true });
+        this.textEntry.clutter_text.single_line_mode = false;
         mainContentLayout.add (this.textEntry );
+
+        this._charCounter = new CharCounter (this.textEntry);
+        this._charCounter.style_class = 'gsms-char-counter';
+        mainContentLayout.add (this._charCounter);
 
         this.setButtons([{ label: _("Cancel"),
                            action: Lang.bind(this, this._onCancelButtonPressed),
@@ -491,6 +505,21 @@ const NewMessageDialog = new Lang.Class ({
                          { label:  _("Send"),
                            action: Lang.bind(this, this._onSendButtonPressed)
                          }]);
+    },
+
+    _onPhoneAdded: function (entry, phone) {
+        let button = new St.Button ( { label: phone, reactive: true, style_class: 'gsms-new-message-contact-button' } );
+//        button.connect ('clicked', Lang.bind (this, this._onNewMessageButtonClicked));
+        this.destinyBox.add (button);
+    },
+
+    _onContactSelected: function (entry, contact, phone) {
+        let name = smsHelper.get_name (contact);
+        if (name == "")
+            name == phone; 
+        let button = new St.Button ( { label: name, reactive: true, style_class: 'gsms-new-message-contact-button' } );
+//        button.connect ('clicked', Lang.bind (this, this._onNewMessageButtonClicked));
+        this.destinyBox.add (button);
     },
 
     _onCancelButtonPressed: function (button, event) {
@@ -553,13 +582,9 @@ const Contact = new Lang.Class ({
         this.individual = smsHelper.search_by_phone (phone);
         if (this.individual) {
             this.avatar = this.individual.avatar;
-            if (this.individual.full_name)
-                this.name = this.individual.full_name;
-            else if (this.individual.alias)
-                this.name = this.individual.alias;
-            else if (this.individual.nickname)
-                this.name = this.individual.nickname;
-            else
+
+            this.name = smsHelper.get_name (this.individual);
+            if (this.name == "")
                 this.name = phone;
         }
         else {
@@ -645,12 +670,16 @@ const MessageDisplay = new Lang.Class({
                                      hint_text: _("Type your answer..."),
                                      track_hover: true,
                                      can_focus: true });
-
         this._text = this._entry.clutter_text;
+        this._text.single_line_mode = false;
         this._text.connect('key-press-event', Lang.bind(this, this._onKeyPress));
+
+        this._charCounter = new CharCounter (this._entry);
+        this._charCounter.style_class = 'gsms-char-counter';
 
         this.add (scrollview, { x_fill: true, y_fill: true, expand: false });
         this.add_actor (this._entry);
+        this.add (this._charCounter);
     },
 
     clear: function () {
@@ -658,6 +687,7 @@ const MessageDisplay = new Lang.Class({
     },
 
     loadMessages: function (contact, messages) {
+        this._entry.set_text ("");
         this._loadSenderInfo (contact);
 
         for (let i in messages) {
@@ -711,6 +741,42 @@ const MessageDisplay = new Lang.Class({
     },
 });
 
+const CharCounter = new Lang.Class({
+    Name: 'CharCounter',
+    Extends: St.Label,
+
+    _init: function (entry) {
+        this.parent ();
+        this.set_text ("0/" + MAX_SMS_LENGTH_GSM7); 
+
+        this._entry = entry;
+        this._text = this._entry.clutter_text;
+        this._text.connect('text-changed', Lang.bind(this, this._onTextChanged));
+    },
+
+    _onTextChanged: function (se, prop) {
+        let text = this._entry.get_text ();
+        let length = text.length;
+        let encoding = get_encoding (text);
+        let num_messages;
+
+        if (encoding == ENCODING_GSM7) {
+            num_messages = Math.ceil (length/MAX_SMS_LENGTH_GSM7);
+            num_messages=(num_messages==0)?1:num_messages;
+            this.set_text ("" + length + "/" + MAX_SMS_LENGTH_GSM7 * num_messages); 
+        }
+        else if (encoding == ENCODING_UCS2) {
+            num_messages = Math.ceil (length/MAX_SMS_LENGTH_UCS2);
+            num_messages=(num_messages==0)?1:num_messages;
+            this.set_text ("" + length + "/" + MAX_SMS_LENGTH_UCS2 * num_messages); 
+        }
+        else {
+            this.actor.set_text (_("Unrecognizable encoding"));
+            return;
+        }
+    },
+});
+
 const MessageView = new Lang.Class({
     Name: 'MessageView',
     Extends: St.Table,
@@ -756,6 +822,92 @@ const MessageView = new Lang.Class({
         this.add (this._date, { row: 1, col: 1, x_fill: true, x_align: St.Align.END } );
     },
 });
+
+const ContactsEntry = new Lang.Class ({
+    Name: 'ContactsEntry',
+    Extends: St.Entry,
+
+    _init: function (params) {
+        this.parent (params);
+
+        this._text = this.clutter_text;
+        this._text.connect('key-press-event', Lang.bind(this, this._onKeyPress));
+        this._text.connect('text-changed', Lang.bind(this, this._onTextChanged));
+    },
+
+    _onKeyPress: function (obj, event) {
+        let symbol = event.get_key_symbol();
+        if (symbol == Clutter.Escape) {
+            if (this._popupMenu) {
+                this._popupMenu.destroy();
+                this._popupMenu = null;
+                return true;
+            }                
+        }
+        if (symbol == Clutter.Return || symbol == Clutter.KP_Enter || symbol == Clutter.comma) {
+            this.emit ("phone_added", this.get_text());
+            this.set_text ("");
+            this.grab_key_focus();
+            return true;
+        }
+        return false;
+    },
+
+    _onTextChanged: function (se, prop) {
+        let searchString = this.get_text();
+        
+        if (searchString.length >= MIN_CONTACT_SEARCH_LENGTH) {
+            let contacts = smsHelper.search_contacts (searchString);
+
+            if (contacts.length > 0) {
+                this._loadMenu (contacts);
+            }
+        }
+        else {
+            if (this._popupMenu) {
+                this._popupMenu.destroy();
+                this._popupMenu = null;
+            }
+        }
+    },
+
+    _loadMenu: function (contacts) {
+        if (this._popupMenu) {
+            this._popupMenu.destroy();
+            this._popupMenu = null;
+        }
+
+        this._popupMenu = new PopupMenu.PopupMenu (this, 0.0, St.Side.TOP, 0);
+        Main.uiGroup.add_actor(this._popupMenu.actor);
+        this._popupMenu.actor.hide();
+
+        for (var i in contacts) {
+            // We show only the first MAX_CONTACT_SEARCH_DISPLAY contacts
+            if (i < MAX_CONTACT_SEARCH_DISPLAY) {
+                let contact = contacts[i];
+                let name;
+
+                name = smsHelper.get_name (contact);
+                if (name == "")
+                    name = "UNKNOWN";
+
+                let numbers = smsHelper.get_phone_numbers (contact);
+                for (var number in numbers) {
+                    let item = new PopupMenu.PopupMenuItem (name + " (" + numbers[number] + ")\n" + number);
+                    this._popupMenu.addMenuItem (item);
+                    item.connect('activate', Lang.bind(this, function() {
+                        this.set_text ("");
+                        this.grab_key_focus();
+                        this.emit ('contact_selected', contact, number);
+                    }));
+                }
+            }
+        }
+        this._popupMenu.open ();
+        this._popupMenu.grab_key_focus ();
+    }
+});
+Signals.addSignalMethods(ContactsEntry.prototype);
 
 const NotificationSystem = new Lang.Class ({
     Name: 'NotificationSystem',
@@ -807,6 +959,9 @@ const Separator = new Lang.Class({
     }
 });
 
+function get_encoding (text) {
+    return ENCODING_GSM7;
+}
 
 function init() {
 }

@@ -6,6 +6,11 @@ public class GnomeSms.Helper: GLib.Object {
     public signal void update_contacts ();
 
     private HashMap<string, Individual> individuals = new HashMap<string, Individual> ();
+    private HashMap<string, string> phoneTypes = new HashMap<string, string> ();
+
+    public Helper () {
+        phoneTypes["work"] = _("Work");
+    }
 
     public void read_individuals () {
         IndividualAggregator agg = new IndividualAggregator ();
@@ -20,8 +25,19 @@ public class GnomeSms.Helper: GLib.Object {
             string id = entry.key;
             Individual individual = entry.value;
 
-            foreach (var individualPhone in individual.phone_numbers) {
-                if (normalisedPhone == individualPhone.get_normalised ()) {
+            foreach (var phoneDetails in individual.phone_numbers) {
+
+                /*
+                foreach (var p in individual.phone_numbers) {
+                    print (individual.alias + " - " + p.value + " - ");
+                    foreach (var type in p.parameters.get("type")) {
+                        print (type);
+                    }
+                    print ("\n");
+                }
+                */
+
+                if (normalisedPhone == phoneDetails.get_normalised ()) {
                     return individual;
                 }
             }
@@ -29,18 +45,19 @@ public class GnomeSms.Helper: GLib.Object {
 
         return null;
     }
+    
+    public Individual[] search_contacts (string searchString) {
+        Individual[] contacts = {};
 
-    public static string[] get_phone_numbers (Individual individual) {
-        int i = 0;
+        foreach (var entry in individuals.entries) {
+            Individual individual = entry.value;
 
-        string[] numbers = new string[individual.phone_numbers.size];
-        
-        foreach (var phone in individual.phone_numbers) {
-            numbers[i] = phone.value;
-            i++;
+            if (does_apply (individual, searchString)) {
+                contacts += individual;
+            }
         }
 
-        return numbers;
+        return contacts;
     }
 
     public static bool does_apply (Individual individual, string searchString) {
@@ -66,8 +83,62 @@ public class GnomeSms.Helper: GLib.Object {
         return false;
     }
 
+    public static string get_name (Individual individual) {
+        string name = "";
+
+        if (individual.full_name != null)
+            name = individual.full_name;
+        else if (individual.alias != null)
+            name = individual.alias;
+        else if (individual.nickname != null)
+            name = individual.nickname;
+
+        return name;
+    }
+
+    public static HashTable<string, string> get_phone_numbers (Individual individual) {
+        var numbers = new HashTable<string, string> (null, null);
+        
+        foreach (var phone in individual.phone_numbers) {
+            numbers.insert (phone.value, get_phone_type_string (phone.parameters.get("type")));
+        }
+
+        return numbers;
+    }
+
+    private static string get_phone_type_string (Gee.Collection<string> types) {
+        if ("work" in types && "voice" in types) {
+            return _("Work");
+        }
+        else if ("work" in types && "fax" in types) {
+            return _("Work Fax");
+        }
+        else if ("car" in types) {
+            return _("Car");
+        }
+        else if ("home" in types && "voice" in types) {
+            return _("Home");
+        }
+        else if ("home" in types && "fax" in types) {
+            return _("Home Fax");
+        }
+        else if ("isdn" in types) {
+            return _("ISDN");
+        }
+        else if ("cell" in types) {
+            return _("Mobile");
+        }
+        else if ("voice" in types) {
+            return _("Other");
+        }
+        else if ("fax" in types) {
+            return _("Fax");
+        }
+
+        return "";
+    }
+
     private void individuals_changed_cb (MultiMap<Individual?, Individual?> changes) {
-        print ("UPDATE!!");
         var added = changes.get_values ();
         var removed = changes.get_keys ();
 
