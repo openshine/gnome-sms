@@ -119,7 +119,7 @@ const SmsApplet = new Lang.Class({
     _init: function() {
         this.parent(0.0, "sms");
 
-        //this.actor.hide();
+        this.actor.hide();
 
         this._resetAttempt = 0;
         this._SmsList = {};
@@ -205,9 +205,10 @@ const SmsApplet = new Lang.Class({
             }
         }
 
-        // If there's no modem, we empty the message list
+        // If there's no modem, we empty the message list and hide the panel button
         global.log ("NO MODEMS AVAILABLE");
-        //this.actor.hide();
+        this.actor.hide();
+
         this._SmsList= {};
         this._reloadInterface ();
     },
@@ -760,6 +761,8 @@ const NewMessageDialog = new Lang.Class ({
     _init: function (params) {
         this.parent (params);
 
+        this.destinees = [];
+
         let mainContentLayout = new St.BoxLayout ({ style_class: "gsms-new-message-layout",
                                                     vertical: true });
         this.contentLayout.add(mainContentLayout, { x_fill: true, y_fill: false });
@@ -800,12 +803,15 @@ const NewMessageDialog = new Lang.Class ({
     },
 
     _onPhoneAdded: function (entry, phone) {
+        this.destinees.push ("" + phone);
         let button = new St.Button ( { label: phone, reactive: true, style_class: 'gsms-new-message-contact-button' } );
 //        button.connect ('clicked', Lang.bind (this, this._onNewMessageButtonClicked));
         this.destinyBox.add (button);
     },
 
     _onContactSelected: function (entry, contact, phone) {
+        this.destinees.push ("" + phone);
+
         let name = smsHelper.get_name (contact);
         if (name == "")
             name == phone; 
@@ -819,6 +825,8 @@ const NewMessageDialog = new Lang.Class ({
     },
 
     _onSendButtonPressed: function (button, event) {
+        for (let phone in this.destinees)
+            global.log (this.destinees[phone]);
         this.close(global.get_current_time());
     },
 });
@@ -881,7 +889,7 @@ const ContactsEntry = new Lang.Class ({
         Main.uiGroup.add_actor(this._popupMenu.actor);
         this._popupMenu.actor.hide();
 
-        for (var i in contacts) {
+        for (let i in contacts) {
             // We show only the first MAX_CONTACT_SEARCH_DISPLAY contacts
             if (i < MAX_CONTACT_SEARCH_DISPLAY) {
                 let contact = contacts[i];
@@ -892,7 +900,7 @@ const ContactsEntry = new Lang.Class ({
                     name = "UNKNOWN";
 
                 let numbers = smsHelper.get_phone_numbers (contact);
-                for (var number in numbers) {
+                for (let number in numbers) {
                     let item = new PopupMenu.PopupMenuItem (name + " (" + numbers[number] + ")\n" + number);
                     this._popupMenu.addMenuItem (item);
                     item.connect('activate', Lang.bind(this, function() {
@@ -904,7 +912,6 @@ const ContactsEntry = new Lang.Class ({
             }
         }
         this._popupMenu.open ();
-        this._popupMenu.grab_key_focus ();
     }
 });
 Signals.addSignalMethods(ContactsEntry.prototype);
