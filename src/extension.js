@@ -603,13 +603,16 @@ const MessageDisplay = new Lang.Class({
                                      can_focus: true });
         this._text = this._entry.clutter_text;
         this._text.single_line_mode = false;
+        this._text.line_wrap = true;
+        this._text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+        this._text.ellipsize = Pango.EllipsizeMode.NONE;
         this._text.connect('key-press-event', Lang.bind(this, this._onKeyPress));
 
         this._charCounter = new CharCounter (this._entry);
         this._charCounter.style_class = 'gsms-char-counter';
 
         this.add (scrollview, { x_fill: true, y_fill: true, expand: false });
-        this.add_actor (this._entry);
+        this.add (this._entry, { x_expand: false, y_expand: true, y_fill: true } );
         this.add (this._charCounter);
     },
 
@@ -787,7 +790,10 @@ const NewMessageDialog = new Lang.Class ({
                                         track_hover: true,
                                         can_focus: true });
         this.textEntry.clutter_text.single_line_mode = false;
-        mainContentLayout.add (this.textEntry );
+        this.textEntry.clutter_text.line_wrap = true;
+        this.textEntry.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+        this.textEntry.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+        mainContentLayout.add (this.textEntry, { x_expand: false, y_expand: true, y_fill: true } );
 
         this._charCounter = new CharCounter (this.textEntry);
         this._charCounter.style_class = 'gsms-char-counter';
