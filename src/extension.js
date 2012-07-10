@@ -37,6 +37,7 @@ const GnomeSms = imports.gi.GnomeSms;
 const Lang = imports.lang;
 const Signals = imports.signals;
 const Cairo = imports.cairo;
+const Mainloop = imports.mainloop;
 
 const PropertiesIface = <interface name="org.freedesktop.DBus.Properties">
     <signal name="MmPropertiesChanged">
@@ -125,14 +126,14 @@ const SmsApplet = new Lang.Class({
         this._SmsList = {};
         this._notificationSystem = new NotificationSystem();
 
-        smsHelper = new GnomeSms.Helper ();
-        smsHelper.connect ('update_contacts', Lang.bind (this, this._onUpdateContacts));
-        smsHelper.read_individuals();
-
         modem_manager_proxy = new ModemManagerDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', '/org/freedesktop/ModemManager');
 
         this._createMainButton();
         this._createMainPanel();
+
+        smsHelper = new GnomeSms.Helper ();
+        smsHelper.connect ('update_contacts', Lang.bind (this, this._onUpdateContacts));
+        smsHelper.read_individuals();
 
         this._loadDevices();
 
@@ -214,23 +215,23 @@ const SmsApplet = new Lang.Class({
     },
 
     _init_modem: function (modem_path) {
-            global.log ("MODEM: " + modem_path);
+        global.log ("MODEM: " + modem_path);
 
-            properties_proxy = new PropertiesDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
-            properties_proxy.connectSignal ('MmPropertiesChanged', Lang.bind (this, function (proxy, sender, [iface, properties]) {
-                this._onModemPropertiesChanged (iface, properties);
-            }));
+        properties_proxy = new PropertiesDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
+        properties_proxy.connectSignal ('MmPropertiesChanged', Lang.bind (this, function (proxy, sender, [iface, properties]) {
+            this._onModemPropertiesChanged (iface, properties);
+        }));
 
-            sms_proxy = new SmsDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
-            sms_proxy.connectSignal ('SmsReceived', Lang.bind (this, function (proxy, sender, [id, complete]) {
-                this._onSmsReceived (id, complete);
-            }));
-            sms_proxy.connectSignal ('Completed', Lang.bind (this, function (proxy, sender, [id, complete]) {
-                this._onSmsReceived (id, complete);
-            }));
+        sms_proxy = new SmsDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
+        sms_proxy.connectSignal ('SmsReceived', Lang.bind (this, function (proxy, sender, [id, complete]) {
+            this._onSmsReceived (id, complete);
+        }));
+        sms_proxy.connectSignal ('Completed', Lang.bind (this, function (proxy, sender, [id, complete]) {
+            this._onSmsReceived (id, complete);
+        }));
 
-            modem_proxy = new ModemDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
-            modem_proxy.EnableRemote (true, Lang.bind (this, this._onModemEnabled));
+        modem_proxy = new ModemDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
+        modem_proxy.EnableRemote (true, Lang.bind (this, this._onModemEnabled));
     },
 
     _onModemEnabled: function ([], err) {
@@ -512,18 +513,18 @@ const Contact = new Lang.Class ({
 
         this.individual = smsHelper.search_by_phone (phone);
         if (this.individual) {
-            this.avatar = this.individual.avatar;
-
             this.name = smsHelper.get_name (this.individual);
             if (this.name == "")
                 this.name = phone;
+
+            this.avatar = this.individual.avatar;
         }
         else {
             this.name = phone;
         }
     },
 
-    getIcon: function (name) {
+    getIcon: function () {
         let icon = new St.Icon ({ icon_type: St.IconType.FULLCOLOR,
                                    icon_size: CONTACT_ICON_SIZE,
                                    style_class: 'gsms-contact-icon' });
@@ -693,21 +694,29 @@ const CharCounter = new Lang.Class({
         let length = text.length;
         let encoding = get_encoding (text);
         let num_messages;
+        let label;
 
         if (encoding == ENCODING_GSM7) {
             num_messages = Math.ceil (length/MAX_SMS_LENGTH_GSM7);
             num_messages=(num_messages==0)?1:num_messages;
-            this.set_text ("" + length + "/" + MAX_SMS_LENGTH_GSM7 * num_messages); 
+            label = "" + length + "/" + MAX_SMS_LENGTH_GSM7 * num_messages;
+            if (num_messages > 1) {
+                label += " (" + num_messages + ")";
+            }
         }
         else if (encoding == ENCODING_UCS2) {
             num_messages = Math.ceil (length/MAX_SMS_LENGTH_UCS2);
             num_messages=(num_messages==0)?1:num_messages;
-            this.set_text ("" + length + "/" + MAX_SMS_LENGTH_UCS2 * num_messages); 
+            label = "" + length + "/" + MAX_SMS_LENGTH_UCS2 * num_messages;
+            if (num_messages > 1) {
+                label += " (" + num_messages + ")";
+            }
         }
         else {
-            this.actor.set_text (_("Unrecognizable encoding"));
-            return;
+            label = _("Unrecognizable encoding");
         }
+        
+        this.set_text (label);
     },
 });
 
@@ -980,8 +989,10 @@ function init() {
 }
 
 function enable() {
-    let smsApplet = new SmsApplet ();
-    Main.panel.addToStatusArea('sms', smsApplet);
+    Mainloop.timeout_add (3000, function () {
+        let smsApplet = new SmsApplet ();
+        Main.panel.addToStatusArea('sms', smsApplet);
+    });
 }
 
 function disable() {

@@ -26,17 +26,6 @@ public class GnomeSms.Helper: GLib.Object {
             Individual individual = entry.value;
 
             foreach (var phoneDetails in individual.phone_numbers) {
-
-                /*
-                foreach (var p in individual.phone_numbers) {
-                    print (individual.alias + " - " + p.value + " - ");
-                    foreach (var type in p.parameters.get("type")) {
-                        print (type);
-                    }
-                    print ("\n");
-                }
-                */
-
                 if (normalisedPhone == phoneDetails.get_normalised ()) {
                     return individual;
                 }
