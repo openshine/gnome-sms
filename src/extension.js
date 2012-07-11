@@ -70,6 +70,14 @@ const ModemDBusIface = <interface name="org.freedesktop.ModemManager.Modem">
 </interface>;
 const ModemDBus = Gio.DBusProxy.makeProxyWrapper (ModemDBusIface);
 
+const GsmDBusIface = <interface name="org.freedesktop.ModemManager.Modem.Gsm.Card">
+    <method name="GetImsi">
+        <arg type="s" direction="out" />
+    </method>
+</interface>;
+const GsmDBus = Gio.DBusProxy.makeProxyWrapper (GsmDBusIface);
+
+
 const SmsDBusIface = <interface name="org.freedesktop.ModemManager.Modem.Gsm.SMS">
     <method name="List">
         <arg type="aa{sv}" direction="out" />
@@ -94,6 +102,8 @@ const SmsDBusIface = <interface name="org.freedesktop.ModemManager.Modem.Gsm.SMS
 const SmsDBus = Gio.DBusProxy.makeProxyWrapper (SmsDBusIface);
 
 /* Global vars */
+const DCONF_SCHEMA = 'org.gnome.shell.extensions.sms';
+const OUTGOING_STORAGE_KEY = 'outgoing';
 const CONTACT_ICON_SIZE = 40;
 const MAX_RESET_ATTEMPTS = 5;
 const MIN_CONTACT_SEARCH_LENGTH = 2;
@@ -105,14 +115,15 @@ const MAX_SMS_LENGTH_GSM7 = 155;
 const MAX_SMS_LENGTH_UCS2 = 70;
 
 let extension = imports.misc.extensionUtils.getCurrentExtension();
-let smsButton;
 let smsHelper;
+let outgoingMessageStorage;
 
 /* DBus proxy objects */
 let properties_proxy;
 let modem_manager_proxy;
 let modem_proxy;
 let sms_proxy;
+let gsm_proxy;
  
 const SmsApplet = new Lang.Class({
     Name: 'SmsApplet',
@@ -231,8 +242,21 @@ const SmsApplet = new Lang.Class({
             this._onSmsReceived (id, complete);
         }));
 
+        gsm_proxy = new GsmDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
+        gsm_proxy.GetImsiRemote (Lang.bind (this, this._onGetImsi));
+
         modem_proxy = new ModemDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
         modem_proxy.EnableRemote (true, Lang.bind (this, this._onModemEnabled));
+    },
+
+    _onGetImsi: function (imsi, err) {
+        if (err) {
+            global.log ("ERROR getting IMSI: " + err);
+            return;
+        }
+
+        imsi = imsi[0];
+        outgoingMessageStorage = new OutgoingMessageStorage (imsi);
     },
 
     _onModemEnabled: function ([], err) {
@@ -475,96 +499,6 @@ const ContactList = new Lang.Class({
 });
 Signals.addSignalMethods(ContactList.prototype);
 
-const Message = new Lang.Class ({
-    Name: 'Message',
-
-    _init: function (phone, date, text) {
-        this.phone = phone;
-        this.date = this._parseDate (date);
-        this.text = text;
-    },
-
-    _parseDate: function (date) {
-        // Date format: y/m/d,H:i:sO
-        let match = date.match (/(\d{2})\/(\d{2})\/(\d{2})\,(\d{2})\:(\d{2})\:(\d{2})(\+)?(\d*)?/);
-        if (!match)
-            return "";
-
-        let year = 2000 + parseInt(match[1]);
-        let month = parseInt(match[2])-1;
-        let day = parseInt(match[3]);
-        let hour = parseInt(match[4]);
-        let minute = parseInt(match[5]);
-        let second = parseInt(match[6]);
-
-        let gmt = null;
-        if (match.length > 7) {
-            let sign = match[7];
-            let gmt = match[8];
-
-            if (sign == '-') {
-                hour -= parseInt (gmt);
-            }
-            else if (sign == '+') {
-                hour += parseInt (gmt);
-            }
-        }
-
-        return new Date (Date.UTC (year, month, day, hour, minute, second));
-    },
-
-    get_date_string: function () {
-        return this.date.toLocaleString();
-    }
-});
-
-const Contact = new Lang.Class ({
-    Name: 'Contact',
-
-    _init: function (phone) {
-        this.name = phone;
-        this.phone = phone;
-        this.avatar = null;
-
-        this.individual = smsHelper.search_by_phone (phone);
-        if (this.individual) {
-            this.name = smsHelper.get_name (this.individual);
-            if (this.name == "")
-                this.name = phone;
-
-            this.avatar = this.individual.avatar;
-        }
-        else {
-            this.name = phone;
-        }
-    },
-
-    getIcon: function () {
-        let icon = new St.Icon ({ icon_type: St.IconType.FULLCOLOR,
-                                   icon_size: CONTACT_ICON_SIZE,
-                                   style_class: 'gsms-contact-icon' });
-        if (this.avatar) {
-            icon.gicon = this.avatar;
-        }
-        else {
-            icon.icon_name = 'avatar-default';
-        }
-
-        return icon;
-    },
-
-    does_apply: function (searchString) {
-        searchString = searchString.toLowerCase ();
-
-        if (!this.individual) {
-            return this.phone.indexOf (searchString) !== -1;
-        }
-        else {
-            return smsHelper.does_apply (this.individual, searchString);
-        }
-    }
-});
-
 const ContactButton = new Lang.Class({
     Name: 'ContactButton',
     Extends: St.Button,
@@ -672,6 +606,9 @@ const MessageDisplay = new Lang.Class({
             let message = {};
             message['number'] = GLib.Variant.new_string(phone);
             message['text'] = GLib.Variant.new_string(text);
+            message['smsc'] = GLib.Variant.new_string("+34609090909");
+
+            outgoingMessageStorage.writeMessage (phone, new Date(), text);
 
             sms_proxy.SendRemote(message, Lang.bind(this, this._onSmsSend));
         }
@@ -690,50 +627,6 @@ const MessageDisplay = new Lang.Class({
             this._sendMessage ();
             this._entry.set_text ("");
         }
-    },
-});
-
-const CharCounter = new Lang.Class({
-    Name: 'CharCounter',
-    Extends: St.Label,
-
-    _init: function (entry) {
-        this.parent ();
-        this.set_text ("0/" + MAX_SMS_LENGTH_GSM7); 
-
-        this._entry = entry;
-        this._text = this._entry.clutter_text;
-        this._text.connect('text-changed', Lang.bind(this, this._onTextChanged));
-    },
-
-    _onTextChanged: function (se, prop) {
-        let text = this._entry.get_text ();
-        let length = text.length;
-        let encoding = get_encoding (text);
-        let num_messages;
-        let label;
-
-        if (encoding == ENCODING_GSM7) {
-            num_messages = Math.ceil (length/MAX_SMS_LENGTH_GSM7);
-            num_messages=(num_messages==0)?1:num_messages;
-            label = "" + length + "/" + MAX_SMS_LENGTH_GSM7 * num_messages;
-            if (num_messages > 1) {
-                label += " (" + num_messages + ")";
-            }
-        }
-        else if (encoding == ENCODING_UCS2) {
-            num_messages = Math.ceil (length/MAX_SMS_LENGTH_UCS2);
-            num_messages=(num_messages==0)?1:num_messages;
-            label = "" + length + "/" + MAX_SMS_LENGTH_UCS2 * num_messages;
-            if (num_messages > 1) {
-                label += " (" + num_messages + ")";
-            }
-        }
-        else {
-            label = _("Unrecognizable encoding");
-        }
-        
-        this.set_text (label);
     },
 });
 
@@ -780,6 +673,50 @@ const MessageView = new Lang.Class({
         this._date.style_class = 'gsms-message-date';
         this._date.set_text (message.get_date_string());
         this.add (this._date, { row: 1, col: 1, x_fill: true, x_align: St.Align.END } );
+    },
+});
+
+const CharCounter = new Lang.Class({
+    Name: 'CharCounter',
+    Extends: St.Label,
+
+    _init: function (entry) {
+        this.parent ();
+        this.set_text ("0/" + MAX_SMS_LENGTH_GSM7); 
+
+        this._entry = entry;
+        this._text = this._entry.clutter_text;
+        this._text.connect('text-changed', Lang.bind(this, this._onTextChanged));
+    },
+
+    _onTextChanged: function (se, prop) {
+        let text = this._entry.get_text ();
+        let length = text.length;
+        let encoding = get_encoding (text);
+        let num_messages;
+        let label;
+
+        if (encoding == ENCODING_GSM7) {
+            num_messages = Math.ceil (length/MAX_SMS_LENGTH_GSM7);
+            num_messages=(num_messages==0)?1:num_messages;
+            label = "" + length + "/" + MAX_SMS_LENGTH_GSM7 * num_messages;
+            if (num_messages > 1) {
+                label += " (" + num_messages + ")";
+            }
+        }
+        else if (encoding == ENCODING_UCS2) {
+            num_messages = Math.ceil (length/MAX_SMS_LENGTH_UCS2);
+            num_messages=(num_messages==0)?1:num_messages;
+            label = "" + length + "/" + MAX_SMS_LENGTH_UCS2 * num_messages;
+            if (num_messages > 1) {
+                label += " (" + num_messages + ")";
+            }
+        }
+        else {
+            label = _("Unrecognizable encoding");
+        }
+        
+        this.set_text (label);
     },
 });
 
@@ -1030,6 +967,118 @@ const Separator = new Lang.Class({
     }
 });
 
+const Message = new Lang.Class ({
+    Name: 'Message',
+
+    _init: function (phone, date, text) {
+        this.phone = phone;
+        this.date = this._parseDate (date);
+        this.text = text;
+    },
+
+    _parseDate: function (date) {
+        // Date format: y/m/d,H:i:sO
+        let match = date.match (/(\d{2})\/(\d{2})\/(\d{2})\,(\d{2})\:(\d{2})\:(\d{2})(\+)?(\d*)?/);
+        if (!match)
+            return "";
+
+        let year = 2000 + parseInt(match[1]);
+        let month = parseInt(match[2])-1;
+        let day = parseInt(match[3]);
+        let hour = parseInt(match[4]);
+        let minute = parseInt(match[5]);
+        let second = parseInt(match[6]);
+
+        let gmt = null;
+        if (match.length > 7) {
+            let sign = match[7];
+            let gmt = match[8];
+
+            if (sign == '-') {
+                hour -= parseInt (gmt);
+            }
+            else if (sign == '+') {
+                hour += parseInt (gmt);
+            }
+        }
+
+        return new Date (Date.UTC (year, month, day, hour, minute, second));
+    },
+
+    get_date_string: function () {
+        return this.date.toLocaleString();
+    }
+});
+
+const Contact = new Lang.Class ({
+    Name: 'Contact',
+
+    _init: function (phone) {
+        this.name = phone;
+        this.phone = phone;
+        this.avatar = null;
+
+        this.individual = smsHelper.search_by_phone (phone);
+        if (this.individual) {
+            this.name = smsHelper.get_name (this.individual);
+            if (this.name == "")
+                this.name = phone;
+
+            this.avatar = this.individual.avatar;
+        }
+        else {
+            this.name = phone;
+        }
+    },
+
+    getIcon: function () {
+        let icon = new St.Icon ({ icon_type: St.IconType.FULLCOLOR,
+                                   icon_size: CONTACT_ICON_SIZE,
+                                   style_class: 'gsms-contact-icon' });
+        if (this.avatar) {
+            icon.gicon = this.avatar;
+        }
+        else {
+            icon.icon_name = 'avatar-default';
+        }
+
+        return icon;
+    },
+
+    does_apply: function (searchString) {
+        searchString = searchString.toLowerCase ();
+
+        if (!this.individual) {
+            return this.phone.indexOf (searchString) !== -1;
+        }
+        else {
+            return smsHelper.does_apply (this.individual, searchString);
+        }
+    }
+});
+
+const OutgoingMessageStorage = new Lang.Class ({
+    Name: "OutgoingMessageStorage",
+
+    _init: function (imsi) {
+        this._imsi = imsi;
+        this.settings = new Gio.Settings ({ schema: DCONF_SCHEMA });
+    },
+
+    readMessages: function () {
+        let messages_variant = this.settings.get_value (OUTGOING_STORAGE_KEY);
+        let messages = messages_variant.deep_unpack ();
+        
+        for (message in messages) {
+        }
+    },
+
+    writeMessage: function (phone, date, text) {
+        let message = GLib.Variant.new('a{ss}', {'phone': phone, 'text': text, 'date': date});
+        this.settings.set_value (OUTGOING_STORAGE_KEY, message);
+    },
+});
+
 function get_encoding (text) {
     return ENCODING_GSM7;
 }
@@ -1045,6 +1094,5 @@ function enable() {
 }
 
 function disable() {
-    smsButton.destroy();
 }
 
