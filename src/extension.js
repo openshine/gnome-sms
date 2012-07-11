@@ -27,6 +27,7 @@ const ModalDialog = imports.ui.modalDialog;
 
 const St = imports.gi.St;
 const Gtk = imports.gi.Gtk;
+const GLib = imports.gi.GLib;
 const Gio = imports.gi.Gio;
 const Pango = imports.gi.Pango;
 const Clutter = imports.gi.Clutter;
@@ -78,7 +79,7 @@ const SmsDBusIface = <interface name="org.freedesktop.ModemManager.Modem.Gsm.SMS
         <arg type="a{sv}" direction="out" />
     </method>
     <method name="Send">
-        <arg type="{sv}" direction="in" />
+        <arg type="a{sv}" direction="in" />
         <arg type="au" direction="out" />
     </method>
     <signal name="SmsReceived">
@@ -304,8 +305,19 @@ const SmsApplet = new Lang.Class({
                 let message = new Message (phone, timestamp, text);
                 this._SmsList[phone].push (message);
             }
+
+            // Let's sort the messages
+            for (let phone in this._SmsList) {
+                this._SmsList[phone].sort (Lang.bind (this, this._sortMessages));
+            }
         }
         this._reloadInterface ();
+    },
+
+    _sortMessages: function (message1, message2) {
+        if (message1.date < message2.date) return 1;
+        if (message1.date > message2.date) return -1;
+        return 0;
     },
 
     _resetDevice: function () {
@@ -498,8 +510,11 @@ const Message = new Lang.Class ({
             }
         }
 
-        let parsedDate = new Date (Date.UTC (year, month, day, hour, minute, second));
-        return parsedDate.toLocaleString();
+        return new Date (Date.UTC (year, month, day, hour, minute, second));
+    },
+
+    get_date_string: function () {
+        return this.date.toLocaleString();
     }
 });
 
@@ -584,9 +599,11 @@ const MessageDisplay = new Lang.Class({
     Name: 'MessageDisplay',
     Extends: St.BoxLayout,
 
-    _init: function(name) {
+    _init: function() {
         this.parent ({vertical: true});
         this.style_class = 'gsms-message-display';
+
+        this._activeContact = null;
 
         this._senderBox = new St.BoxLayout ({style_class: 'gsms-conversation-sender'});
         this.add_actor (this._senderBox, {x_align: St.Align.MIDDLE});
@@ -633,6 +650,8 @@ const MessageDisplay = new Lang.Class({
     },
 
     _loadSenderInfo: function (contact) {
+        this._activeContact = contact;
+        
         this._senderBox.remove_all_children();
 
         let details = new St.BoxLayout({ style_class: 'gsms-contact-details',
@@ -647,24 +666,22 @@ const MessageDisplay = new Lang.Class({
 
     _sendMessage: function () {
         if (sms_proxy) {
-            phone = '663273481';
-            text = this._entry.get_text ();
+            let phone = this._activeContact.phone;
+            let text = this._entry.get_text ();
 
             let message = {};
-            message['number'] = phone;
-            message['text'] = text;
+            message['number'] = GLib.Variant.new_string(phone);
+            message['text'] = GLib.Variant.new_string(text);
 
             sms_proxy.SendRemote(message, Lang.bind(this, this._onSmsSend));
         }
     },
 
-    _onSmsSend: function ([], err) {
+    _onSmsSend: function (index, err) {
         if (err) {
             global.log ("ERROR sending sms: " + err);
             return;
         }
-
-        global.log ("SMS sent ok");
     },
 
     _onKeyPress: function (obj, event) {
@@ -741,8 +758,8 @@ const MessageView = new Lang.Class({
                                             gicon: Gio.icon_new_for_string(extension.path + "/left-arrow.png"),
                                             });
 
-            this.add (this._tag_icon, { row: 0, col: 0, row_span: 2, y_fill: false, y_expand: false, y_align: St.Align.START } );
-            this.add (this._text, { row: 0, col: 1, x_fill: false, x_align: St.Align.START });
+            this.add (this._tag_icon, { row: 0, col: 0, y_fill: false, y_expand: false, x_fill: false, x_expand: false, y_align: St.Align.START } );
+            this.add (this._text, { row: 0, col: 1, x_fill: true, x_expand: true, x_align: St.Align.START });
         }
         else {
             this._text.style_class = 'gsms-message-outgoing';
@@ -752,8 +769,8 @@ const MessageView = new Lang.Class({
                                             gicon: Gio.icon_new_for_string(extension.path + "/right-arrow.png"),
                                             });
 
-            this.add (this._text, { row: 0, col: 0} );
-            this.add (this._tag_icon, { row: 0, col: 1, row_span: 2, y_fill: false, y_expand: false, y_align: St.Align.START } );
+            this.add (this._tag_icon, { row: 0, col: 1, y_fill: false, y_expand: false, x_fill: false, x_expand: false, y_align: St.Align.START } );
+            this.add (this._text, { row: 0, col: 0, x_fill: true, x_expand: true, x_align: St.Align.START });
         }
         this._tag_icon.style_class ='gsms-message-tag';
 
@@ -761,7 +778,7 @@ const MessageView = new Lang.Class({
 
         this._date = new St.Label ();
         this._date.style_class = 'gsms-message-date';
-        this._date.set_text (message.date);
+        this._date.set_text (message.get_date_string());
         this.add (this._date, { row: 1, col: 1, x_fill: true, x_align: St.Align.END } );
     },
 });
@@ -787,6 +804,8 @@ const NewMessageDialog = new Lang.Class ({
                                                  hint_text: _("To..."),
                                                  track_hover: true,
                                                  can_focus: true });
+        // phone_added is emitted when the user writes manually a number in the entry
+        // contact_selected is emitted when the user selects a user from the popupmenu
         this.destinyEntry.connect ("phone_added", Lang.bind (this, this._onPhoneAdded));
         this.destinyEntry.connect ("contact_selected", Lang.bind (this, this._onContactSelected));
         mainContentLayout.add (this.destinyEntry );
@@ -840,9 +859,31 @@ const NewMessageDialog = new Lang.Class ({
     },
 
     _onSendButtonPressed: function (button, event) {
-        for (let phone in this.destinees)
-            global.log (this.destinees[phone]);
+        if (sms_proxy) {
+            let destinyEntryText = this.destinyEntry.get_text();
+            if (destinyEntryText != "") {
+                this.destinees.push ("" + destinyEntryText);
+            }
+            for (let i in this.destinees) {
+                let phone = this.destinees[i];
+                let text = this.textEntry.get_text ();
+
+                let message = {};
+                message['number'] = GLib.Variant.new_string(phone);
+                message['text'] = GLib.Variant.new_string(text);
+
+                sms_proxy.SendRemote(message, Lang.bind(this, this._onSmsSend));
+            }
+        }
+
         this.close(global.get_current_time());
+    },
+
+    _onSmsSend: function (index, err) {
+        if (err) {
+            global.log ("ERROR sending sms: " + err);
+            return;
+        }
     },
 });
 
@@ -856,6 +897,7 @@ const ContactsEntry = new Lang.Class ({
         this._text = this.clutter_text;
         this._text.connect('key-press-event', Lang.bind(this, this._onKeyPress));
         this._text.connect('text-changed', Lang.bind(this, this._onTextChanged));
+        this._text.connect ('key-focus-out', Lang.bind(this, this._onFocusOut)); 
     },
 
     _onKeyPress: function (obj, event) {
@@ -891,6 +933,13 @@ const ContactsEntry = new Lang.Class ({
                 this._popupMenu.destroy();
                 this._popupMenu = null;
             }
+        }
+    },
+
+    _onFocusOut: function () {
+        if (this._popupMenu) {
+            this._popupMenu.destroy();
+            this._popupMenu = null;
         }
     },
 
