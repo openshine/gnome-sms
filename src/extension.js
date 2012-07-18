@@ -243,14 +243,10 @@ const SmsApplet = new Lang.Class({
 
         sms_proxy = new SmsDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
         sms_proxy.connectSignal ('SmsReceived', Lang.bind (this, function (proxy, sender, [id, complete]) {
-	    if (complete) {
-		this._onSmsReceived (id, complete);
-	    }
+	    this._onSmsReceived (id, complete);
         }));
         sms_proxy.connectSignal ('Completed', Lang.bind (this, function (proxy, sender, [id, complete]) {
-	    if (complete) {
-		this._onSmsReceived (id, complete);
-	    }
+	    this._onSmsReceived (id, complete);
         }));
 
         gsm_proxy = new GsmDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
@@ -1022,30 +1018,37 @@ const Message = new Lang.Class ({
     _parseDate: function (date) {
         // Date format: y/m/d,H:i:sO
         let match = date.match (/(\d{2})\/(\d{2})\/(\d{2})\,(\d{2})\:(\d{2})\:(\d{2})(\+)?(\d*)?/);
-        if (!match)
-            return "";
+        if (match) {
+            let year = 2000 + parseInt(match[1]);
+            let month = parseInt(match[2])-1;
+            let day = parseInt(match[3]);
+            let hour = parseInt(match[4]);
+            let minute = parseInt(match[5]);
+            let second = parseInt(match[6]);
 
-        let year = 2000 + parseInt(match[1]);
-        let month = parseInt(match[2])-1;
-        let day = parseInt(match[3]);
-        let hour = parseInt(match[4]);
-        let minute = parseInt(match[5]);
-        let second = parseInt(match[6]);
+            let gmt = null;
+            if (match.length > 7) {
+                let sign = match[7];
+                let gmt = match[8];
 
-        let gmt = null;
-        if (match.length > 7) {
-            let sign = match[7];
-            let gmt = match[8];
-
-            if (sign == '-') {
-                hour -= parseInt (gmt);
+                if (sign == '-') {
+                    hour -= parseInt (gmt);
+                }
+                else if (sign == '+') {
+                    hour += parseInt (gmt);
+                }
             }
-            else if (sign == '+') {
-                hour += parseInt (gmt);
-            }
-        }
 
-        return new Date (Date.UTC (year, month, day, hour, minute, second));
+            return new Date (Date.UTC (year, month, day, hour, minute, second));
+	}
+	else {
+	    var rdate = new Date(date.replace(/^(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(.*)?$/,
+					    '$4:$5:$6 $2/$3/20$1'));
+	    if (rdate.getFullYear ())
+                return rdate;
+
+	    return "";
+	}
     },
 
     get_date_string: function () {
