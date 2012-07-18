@@ -11,6 +11,10 @@ nodist_extension_DATA = metadata.json
 EXTRA_DIST += metadata.json.in
 CLEANFILES += metadata.json
 
+#GSettings schema
+gsettings_SCHEMAS = org.gnome.shell.extensions.sms.gschema.xml
+@GSETTINGS_RULES@
+
 #Helper 
 #-----------------------------------
 AM_VALAFLAGS=								\

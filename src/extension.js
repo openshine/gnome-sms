@@ -83,7 +83,7 @@ const SmsDBusIface = <interface name="org.freedesktop.ModemManager.Modem.Gsm.SMS
         <arg type="aa{sv}" direction="out" />
     </method>
     <method name="Get">
-        <arg type="i" direction="in" />
+        <arg type="u" direction="in" />
         <arg type="a{sv}" direction="out" />
     </method>
     <method name="Send">
@@ -91,11 +91,11 @@ const SmsDBusIface = <interface name="org.freedesktop.ModemManager.Modem.Gsm.SMS
         <arg type="au" direction="out" />
     </method>
     <signal name="SmsReceived">
-        <arg type="i" direction="out" />
+        <arg type="u" direction="out" />
         <arg type="b" direction="out" />
     </signal>
     <signal name="Completed">
-        <arg type="i" direction="out" />
+        <arg type="u" direction="out" />
         <arg type="b" direction="out" />
     </signal>
 </interface>;
@@ -115,6 +115,7 @@ const MAX_SMS_LENGTH_GSM7 = 155;
 const MAX_SMS_LENGTH_UCS2 = 70;
 
 let extension = imports.misc.extensionUtils.getCurrentExtension();
+let smsApplet;
 let smsHelper;
 let outgoingMessageStorage;
 
@@ -179,7 +180,13 @@ const SmsApplet = new Lang.Class({
 
         this._contactList = new ContactList();
         this._contactList.connect ('selected-contact', Lang.bind (this, this._onSelectedContact));
+	this._contactList.connect ('reload-all', Lang.bind (this, function () {
+            this._reloadInterface ();
+	}));
         this._messageDisplay = new MessageDisplay ();
+	this._messageDisplay.connect ('reload', Lang.bind (this, function () {
+            this._reloadInterface ();
+	}));
         this._messageDisplay.hide();
 
         smsBox.add (this._contactList, { x_fill: true, y_fill: true, expand: false });
@@ -236,10 +243,14 @@ const SmsApplet = new Lang.Class({
 
         sms_proxy = new SmsDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
         sms_proxy.connectSignal ('SmsReceived', Lang.bind (this, function (proxy, sender, [id, complete]) {
-            this._onSmsReceived (id, complete);
+	    if (complete) {
+		this._onSmsReceived (id, complete);
+	    }
         }));
         sms_proxy.connectSignal ('Completed', Lang.bind (this, function (proxy, sender, [id, complete]) {
-            this._onSmsReceived (id, complete);
+	    if (complete) {
+		this._onSmsReceived (id, complete);
+	    }
         }));
 
         gsm_proxy = new GsmDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
@@ -291,7 +302,6 @@ const SmsApplet = new Lang.Class({
 
     _onSmsReceived: function (id, complete) {
         if (complete) {
-            global.log ("RECIBIDO!!!!!!!!!!");
             sms_proxy.ListRemote (Lang.bind (this, this._onSmsList));
             sms_proxy.GetRemote (id, Lang.bind (this, function (sms, err) {
                 if (err) {
@@ -300,7 +310,11 @@ const SmsApplet = new Lang.Class({
                 }
 
                 if (sms) {
-                    this._notificationSystem.notify (_("SMS received"), "Texto de la notificacion");
+		    sms = sms[0];
+		    let contact = new Contact (sms.number.get_string()[0]);
+
+		    let text = "<b>" + contact.name + "</b>\n" + sms.text.get_string()[0];
+                    this._notificationSystem.notify (_("SMS received"), text);
                 }
             }));
         }
@@ -314,6 +328,17 @@ const SmsApplet = new Lang.Class({
         }
 
         this._SmsList= {};
+	
+        let messages = outgoingMessageStorage.readMessages();
+	for (let i in messages) {
+	    let message = messages[i];
+
+	    if (!(message.phone in this._SmsList)) {
+	        this._SmsList[message.phone] = [];
+	    }
+	    this._SmsList[message.phone].push (message);
+	}
+
         if (list) {
             list = list[0];
             for (let i in list) {
@@ -326,15 +351,16 @@ const SmsApplet = new Lang.Class({
                 if (!(phone in this._SmsList)) {
                     this._SmsList[phone] = [];
                 }
-                let message = new Message (phone, timestamp, text);
+                let message = new Message ('incoming', phone, timestamp, text);
                 this._SmsList[phone].push (message);
             }
-
-            // Let's sort the messages
-            for (let phone in this._SmsList) {
-                this._SmsList[phone].sort (Lang.bind (this, this._sortMessages));
-            }
         }
+
+        // Let's sort the messages
+        for (let phone in this._SmsList) {
+            this._SmsList[phone].sort (Lang.bind (this, this._sortMessages));
+        }
+
         this._reloadInterface ();
     },
 
@@ -494,6 +520,11 @@ const ContactList = new Lang.Class({
 
     _onNewMessageButtonClicked: function (button) {
         let dialog = new NewMessageDialog ();
+	dialog.connect ("response", Lang.bind (this, function (response) {
+	    if (response == 1) {
+                this.emit ('reload-all');
+	    }
+	}));
         dialog.open();
     }
 });
@@ -578,7 +609,7 @@ const MessageDisplay = new Lang.Class({
 
         for (let i in messages) {
             let message = messages[i];
-            let messageView = new MessageView ("incoming", message);
+            let messageView = new MessageView (message.direction, message);
             this._conversationDisplay.add_actor (messageView);
         }
     },
@@ -606,9 +637,8 @@ const MessageDisplay = new Lang.Class({
             let message = {};
             message['number'] = GLib.Variant.new_string(phone);
             message['text'] = GLib.Variant.new_string(text);
-            message['smsc'] = GLib.Variant.new_string("+34609090909");
 
-            outgoingMessageStorage.writeMessage (phone, new Date(), text);
+            outgoingMessageStorage.writeMessage (phone, new Date().toString(), text);
 
             sms_proxy.SendRemote(message, Lang.bind(this, this._onSmsSend));
         }
@@ -619,6 +649,7 @@ const MessageDisplay = new Lang.Class({
             global.log ("ERROR sending sms: " + err);
             return;
         }
+        this.emit ("reload");
     },
 
     _onKeyPress: function (obj, event) {
@@ -629,14 +660,17 @@ const MessageDisplay = new Lang.Class({
         }
     },
 });
+Signals.addSignalMethods(MessageDisplay.prototype);
 
 const MessageView = new Lang.Class({
     Name: 'MessageView',
-    Extends: St.Table,
+    Extends: St.BoxLayout,
 
     _init: function(direction, message) {
-        this.parent ();
+        this.parent ( { vertical: true } );
         this.style_class = 'gsms-message';
+
+	this._msgTable = new St.Table ();
 
         this._text = new St.Label ();
         this._text.clutter_text.line_wrap = true;
@@ -651,8 +685,8 @@ const MessageView = new Lang.Class({
                                             gicon: Gio.icon_new_for_string(extension.path + "/left-arrow.png"),
                                             });
 
-            this.add (this._tag_icon, { row: 0, col: 0, y_fill: false, y_expand: false, x_fill: false, x_expand: false, y_align: St.Align.START } );
-            this.add (this._text, { row: 0, col: 1, x_fill: true, x_expand: true, x_align: St.Align.START });
+            this._msgTable.add (this._tag_icon, { row: 0, col: 0, x_fill: false, x_expand: false, y_align: St.Align.START } );
+            this._msgTable.add (this._text, { row: 0, col: 1, x_fill: true, x_expand: true, x_align: St.Align.START });
         }
         else {
             this._text.style_class = 'gsms-message-outgoing';
@@ -662,8 +696,8 @@ const MessageView = new Lang.Class({
                                             gicon: Gio.icon_new_for_string(extension.path + "/right-arrow.png"),
                                             });
 
-            this.add (this._tag_icon, { row: 0, col: 1, y_fill: false, y_expand: false, x_fill: false, x_expand: false, y_align: St.Align.START } );
-            this.add (this._text, { row: 0, col: 0, x_fill: true, x_expand: true, x_align: St.Align.START });
+            this._msgTable.add (this._text, { row: 0, col: 0, x_fill: true, x_expand: true, x_align: St.Align.START });
+            this._msgTable.add (this._tag_icon, { row: 0, col: 1, x_fill: false, x_expand: false, y_align: St.Align.START, x_align: St.Align.END } );
         }
         this._tag_icon.style_class ='gsms-message-tag';
 
@@ -672,7 +706,9 @@ const MessageView = new Lang.Class({
         this._date = new St.Label ();
         this._date.style_class = 'gsms-message-date';
         this._date.set_text (message.get_date_string());
-        this.add (this._date, { row: 1, col: 1, x_fill: true, x_align: St.Align.END } );
+
+	this.add (this._msgTable);
+        this.add (this._date, { x_fill: true, x_align: St.Align.END } );
     },
 });
 
@@ -793,6 +829,7 @@ const NewMessageDialog = new Lang.Class ({
 
     _onCancelButtonPressed: function (button, event) {
         this.close(global.get_current_time());
+	this.emit ("response", 0);
     },
 
     _onSendButtonPressed: function (button, event) {
@@ -819,10 +856,14 @@ const NewMessageDialog = new Lang.Class ({
     _onSmsSend: function (index, err) {
         if (err) {
             global.log ("ERROR sending sms: " + err);
+	    this.emit ("response", 0);
             return;
         }
+
+	this.emit ('response', 1);
     },
 });
+Signals.addSignalMethods(NewMessageDialog.prototype);
 
 const ContactsEntry = new Lang.Class ({
     Name: 'ContactsEntry',
@@ -931,7 +972,7 @@ const NotificationSystem = new Lang.Class ({
                                  icon_size: this._source.ICON_SIZE });
         }
 
-        this._notification = new MessageTray.Notification(this._source, title, text, { icon: icon });
+        this._notification = new MessageTray.Notification(this._source, title, text, { icon: icon, bannerMarkup: true });
         this._source.notify(this._notification);
     },
 });
@@ -970,7 +1011,9 @@ const Separator = new Lang.Class({
 const Message = new Lang.Class ({
     Name: 'Message',
 
-    _init: function (phone, date, text) {
+    // Direction: 'incoming' or 'outgoing'
+    _init: function (direction, phone, date, text) {
+	this.direction = direction;
         this.phone = phone;
         this.date = this._parseDate (date);
         this.text = text;
@@ -1067,15 +1110,27 @@ const OutgoingMessageStorage = new Lang.Class ({
 
     readMessages: function () {
         let messages_variant = this.settings.get_value (OUTGOING_STORAGE_KEY);
-        let messages = messages_variant.deep_unpack ();
+        let var_messages = messages_variant.deep_unpack ();
         
-        for (message in messages) {
+	let messages = [];
+        for (let i in var_messages) {
+            let message = var_messages[i];
+	    if (message.imsi == this._imsi) {
+                messages.push (new Message ('outgoing', message.phone, message.date, message.text));	
+	    }
         }
+
+	return messages;
     },
 
     writeMessage: function (phone, date, text) {
-        let message = GLib.Variant.new('a{ss}', {'phone': phone, 'text': text, 'date': date});
-        this.settings.set_value (OUTGOING_STORAGE_KEY, message);
+        let messages_variant = this.settings.get_value (OUTGOING_STORAGE_KEY);
+        let var_messages = messages_variant.deep_unpack ();
+
+        var_messages.push ({'phone': phone, 'text': text, 'date': date, 'imsi': this._imsi});
+
+        let messages = GLib.Variant.new('aa{ss}', var_messages);
+        this.settings.set_value (OUTGOING_STORAGE_KEY, messages);
     },
 });
 
@@ -1088,11 +1143,12 @@ function init() {
 
 function enable() {
     Mainloop.timeout_add (3000, function () {
-        let smsApplet = new SmsApplet ();
+        smsApplet = new SmsApplet ();
         Main.panel.addToStatusArea('sms', smsApplet);
     });
 }
 
 function disable() {
+    smsApplet.destroy();
 }
 

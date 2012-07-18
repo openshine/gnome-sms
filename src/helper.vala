@@ -6,10 +6,8 @@ public class GnomeSms.Helper: GLib.Object {
     public signal void update_contacts ();
 
     private HashMap<string, Individual> individuals = new HashMap<string, Individual> ();
-    private HashMap<string, string> phoneTypes = new HashMap<string, string> ();
 
     public Helper () {
-        phoneTypes["work"] = _("Work");
     }
 
     public void read_individuals () {
