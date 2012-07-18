@@ -634,8 +634,6 @@ const MessageDisplay = new Lang.Class({
             message['number'] = GLib.Variant.new_string(phone);
             message['text'] = GLib.Variant.new_string(text);
 
-            outgoingMessageStorage.writeMessage (phone, new Date().toString(), text);
-
             sms_proxy.SendRemote(message, Lang.bind(this, this._onSmsSend));
         }
     },
@@ -645,6 +643,18 @@ const MessageDisplay = new Lang.Class({
             global.log ("ERROR sending sms: " + err);
             return;
         }
+        sms_proxy.GetRemote (id, Lang.bind (this, function (sms, err) {
+	    if (err) {
+	        return;
+	    }
+	    if (sms) {
+	        sms = sms[0];
+		let number = sms.number.get_string()[0];
+		let text = sms.text.get_string()[0];
+            	outgoingMessageStorage.writeMessage (number, new Date().toString(), text);
+	    }
+        }));
+
         this.emit ("reload");
     },
 
