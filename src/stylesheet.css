@@ -1,0 +1,215 @@
+.gsms-main-box {
+    height: 500px;
+    width: 700px;
+}
+
+.gsms-sms-box {
+    padding-left: 10px;
+    padding-right: 10px;
+    spacing: 5px;
+}
+
+.gsms-search-box {
+}
+
+.gsms-new-message-button {
+    border-radius: 5px;
+    border: 2px solid rgba(245,245,245,0.2);
+    padding: 5px;
+    spacing: 10px;
+    background-gradient-start: rgba(255, 255, 255, 0.2);
+    background-gradient-end: rgba(255, 255, 255, 0);
+    background-gradient-direction: vertical;
+}
+.gsms-new-message-button:hover{
+    color: #fff;
+    background-gradient-start: rgba(255, 255, 255, 0.3);
+    background-gradient-end: rgba(255, 255, 255, 0.1);
+}
+.gsms-new-message-button:active, 
+.gsms-new-message-button:pressed {
+    background-color: #666;
+    background-gradient-start: rgba(255, 255, 255, 0);
+    background-gradient-end: rgba(255, 255, 255, 0.2);
+}
+
+.gsms-contactsbox-separator {
+    -gradient-height: 2px;
+    -gradient-start: rgba(8,8,8,0);
+    -gradient-end: #999999;
+    -margin-horizontal: 1.5em;
+    height: 1em;
+}
+
+.gsms-contact-list {
+    spacing: 5px;
+}
+
+.gsms-contact-list-scrollview {
+}
+
+.gsms-contacts-box {
+    spacing: 5px;
+}
+
+.gsms-contact {
+    border-radius: 5px;
+    border: 2px solid rgba(245,245,245,0.2);
+    padding: 5px;
+    spacing: 10px;
+    background-gradient-start: rgba(255, 255, 255, 0.2);
+    background-gradient-end: rgba(255, 255, 255, 0);
+    background-gradient-direction: vertical;
+}
+.gsms-contact:hover{
+    color: #fff;
+    background-gradient-start: rgba(255, 255, 255, 0.3);
+    background-gradient-end: rgba(255, 255, 255, 0.1);
+}
+.gsms-contact:active, 
+.gsms-contact:pressed {
+    background-color: #666;
+    background-gradient-start: rgba(255, 255, 255, 0);
+    background-gradient-end: rgba(255, 255, 255, 0.2);
+}
+
+.gsms-contact-button-box {
+    spacing: 10px;
+}
+
+.gsms-contact-icon {
+    border: 2px solid #999;
+    border-radius: 5px;
+}
+
+.gsms-contact-details {
+}
+
+.gsms-contact-details-label {
+    font-weight: bold;
+}
+
+.gsms-contact-details-label-small {
+}
+
+.gsms-char-counter {
+    color: #bbb;
+    text-align: right;
+    font-size: 0.8em;
+}
+
+.gsms-message-display {
+    spacing: 10px;
+}
+.gsms-message-display-scrollview {
+}
+
+.gsms-new-message-layout {
+    font-weight: bold;
+    text-align: center;
+    color: #bbb;
+}
+
+.gsms-new-message-layout {
+    spacing: 10px;
+}
+
+.gsms-new-message-entry,
+.gsms-message-reply-entry {
+    padding: 4px 12px;
+    border-radius: 17px;
+    font-size: 12pt;
+    color: rgb(64, 64, 64);
+    background-gradient-start: rgb(200,200,200);
+    background-gradient-end: white;
+    background-gradient-direction: vertical;
+    border: 2px solid rgba(245,245,245,0.2);
+    width: 250px;
+}
+
+.gsms-new-message-entry {
+    width: 200px;
+}
+
+.gsms-new-message-contact-box {
+    spacing: 5px;
+}
+
+.gsms-new-message-contact-button {
+    border-radius: 5px;
+    border: 2px solid rgba(245,245,245,0.2);
+    padding: 5px;
+    spacing: 10px;
+    background-gradient-start: rgba(255, 255, 255, 0.2);
+    background-gradient-end: rgba(255, 255, 255, 0);
+    background-gradient-direction: vertical;
+}
+.gsms-new-message-contact-button:hover{
+    color: #fff;
+    background-gradient-start: rgba(255, 255, 255, 0.3);
+    background-gradient-end: rgba(255, 255, 255, 0.1);
+}
+.gsms-new-message-contact-button:active, 
+.gsms-new-message-contact-button:pressed {
+    background-color: #666;
+    background-gradient-start: rgba(255, 255, 255, 0);
+    background-gradient-end: rgba(255, 255, 255, 0.2);
+}
+
+
+
+.gsms-conversation-sender {
+    border-radius: 5px;
+    background-gradient-start: rgba(255, 255, 255, 0.2);
+    background-gradient-end: rgba(255, 255, 255, 0);
+    background-gradient-direction: vertical;
+    padding: 5px;
+    spacing: 10px;
+}
+
+.gsms-conversation-display {
+    border-radius: 5px;
+    background-gradient-start: #ededed;
+    background-gradient-end: #a2a2a2;
+    background-gradient-direction: vertical;
+    padding: 10px;
+    spacing: 10px;
+}
+
+.gsms-message {
+    spacing: 0px;
+}
+
+.gsms-message-tag {
+    padding-top: 10px;
+    padding-left: 0px;
+    padding-right: 0px;
+    margin-left: 0px;
+    margin-right: 0px;
+}
+
+.gsms-message-date {
+    text-align: right;
+    color: #333;
+    font-size: 0.8em;
+}
+
+.gsms-message-incoming {
+    padding: 5px;
+    border: 1px solid #d97d00;
+    border-radius: 5px;
+    background-gradient-start: #fba301;
+    background-gradient-end: #f07e02;
+    background-gradient-direction: vertical;
+    color: #333;
+}
+
+.gsms-message-outgoing {
+    padding: 5px;
+    border: 1px solid #007aa3;
+    border-radius: 5px;
+    background-gradient-start: #03aaf1;
+    background-gradient-end: #0079a8;
+    background-gradient-direction: vertical;
+    color: #eee;
+}
