@@ -1,0 +1,9 @@
+<schemalist gettext-domain="gnome-shell-extensions-sms">
+  <schema id="org.gnome.shell.extensions.sms" path="/org/gnome/shell/extensions/sms/">
+    <key name="outgoing" type="aa{ss}">
+        <default>[]</default>
+        <summary></summary>
+        <description></description>
+    </key>
+  </schema>
+</schemalist>
