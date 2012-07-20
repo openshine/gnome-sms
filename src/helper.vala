@@ -24,7 +24,9 @@ public class GnomeSms.Helper: GLib.Object {
             Individual individual = entry.value;
 
             foreach (var phoneDetails in individual.phone_numbers) {
-                if (normalisedPhone == phoneDetails.get_normalised ()) {
+		string normPhoneDetails = phoneDetails.get_normalised ();
+                if (normalisedPhone.has_suffix (normPhoneDetails) || normPhoneDetails.has_suffix (normalisedPhone)) {
+		    stdout.printf(phone + " - " + phoneDetails.get_normalised() + "\n");
                     return individual;
                 }
             }
