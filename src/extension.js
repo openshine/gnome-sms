@@ -230,6 +230,9 @@ const SmsApplet = new Lang.Class({
         this.actor.hide();
 
         this._SmsList= {};
+        this._selectedContact = null;
+
+        this.menu.close();
         this._reloadInterface ();
     },
 
