@@ -12,8 +12,12 @@ EXTRA_DIST += metadata.json.in
 CLEANFILES += metadata.json
 
 #GSettings schema
-gsettings_SCHEMAS = org.gnome.shell.extensions.sms.gschema.xml
+gschemas_in = org.gnome.shell.extensions.sms.gschema.xml.in
+@INTLTOOL_XML_NOMERGE_RULE@
+gsettings_SCHEMAS = $(gschemas_in:.xml.in=.xml)
 @GSETTINGS_RULES@
+CLEANFILES += $(gschemas_in:.xml.in=.valid) $(gsettings_SCHEMAS)
+EXTRA_DIST += $(gschemas_in)?
 
 #Helper 
 #-----------------------------------
