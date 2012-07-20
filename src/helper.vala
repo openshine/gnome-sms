@@ -17,16 +17,12 @@ public class GnomeSms.Helper: GLib.Object {
     }
 
     public Individual? search_by_phone (string phone) {
-        string normalisedPhone = new PhoneFieldDetails (phone).get_normalised();
-
         foreach (var entry in individuals.entries) {
             string id = entry.key;
             Individual individual = entry.value;
 
             foreach (var phoneDetails in individual.phone_numbers) {
-		string normPhoneDetails = phoneDetails.get_normalised ();
-                if (normalisedPhone.has_suffix (normPhoneDetails) || normPhoneDetails.has_suffix (normalisedPhone)) {
-		    stdout.printf(phone + " - " + phoneDetails.get_normalised() + "\n");
+                if (compare_numbers (phone, phoneDetails.get_normalised())) {
                     return individual;
                 }
             }
@@ -67,6 +63,17 @@ public class GnomeSms.Helper: GLib.Object {
             else if (searchString in phone.get_normalised ().down()) {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    public static bool compare_numbers (string number1, string number2) {
+        string normNumber1 = new PhoneFieldDetails (number1).get_normalised();
+        string normNumber2 = new PhoneFieldDetails (number2).get_normalised();
+
+        if (normNumber1.has_suffix (normNumber2) || normNumber2.has_suffix (normNumber1)) {
+            return true;
         }
 
         return false;

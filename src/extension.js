@@ -395,7 +395,7 @@ const SmsApplet = new Lang.Class({
         this._selectedContact = contact;
         this._messageDisplay.clear ();
         for (let phone in this._SmsList) {
-            if (phone == contact.phone) {
+            if (smsHelper.compare_numbers (phone, contact.phone)) {
                 this._messageDisplay.loadMessages (contact, this._SmsList[phone]);
             }
         }
