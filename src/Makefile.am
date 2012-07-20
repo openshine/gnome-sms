@@ -8,7 +8,7 @@ include ../include.mk
 dist_extension_DATA = extension.js stylesheet.css left-arrow.png right-arrow.png 
 nodist_extension_DATA = metadata.json
 
-EXTRA_DIST += metadata.json.in
+EXTRA_DIST += metadata.json.in org.gnome.shell.extensions.sms.gschema.valid org.gnome.shell.extensions.sms.gschema.xml
 CLEANFILES += metadata.json
 
 #GSettings schema
