@@ -1,6 +1,6 @@
 AC_PREREQ(2.63)
 dnl be carefull, the version needs to be in sync with your gnome shell version
-AC_INIT([gnome-sms],[0.0.1],[https://github.com/openshine/gnome-sms])
+AC_INIT([gnome-sms],[0.0.2],[https://github.com/openshine/gnome-sms])
 AM_INIT_AUTOMAKE([1.10 dist-bzip2 no-dist-gzip foreign tar-ustar])
 
 # Enable silent rules is available

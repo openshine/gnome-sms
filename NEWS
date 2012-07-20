@@ -1,3 +1,12 @@
+Version 0.0.2
+===============================
+
+New Features
+-------------------------------
+  * Unload messages from the conversation view when the modem is unplugged
+  * Improved the phone numbers comparison
+  * Fixed phone number comparison
+
 Version 0.0.1
 ===============================
 
