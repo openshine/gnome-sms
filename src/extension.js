@@ -389,6 +389,9 @@ const SmsApplet = new Lang.Class({
         if (this._selectedContact) {
             this._onSelectedContact (null, this._selectedContact);
         }
+        else {
+            this._messageDisplay.clear();
+        }
     },
 
     _onSelectedContact: function (src, contact) {
@@ -599,7 +602,11 @@ const MessageDisplay = new Lang.Class({
     },
 
     clear: function () {
+        this._senderBox.remove_all_children();
         this._conversationDisplay.remove_all_children();
+        this._conversationDisplay.hide();
+        this._entry.hide();
+        this._charCounter.hide();
     },
 
     loadMessages: function (contact, messages) {
@@ -611,6 +618,9 @@ const MessageDisplay = new Lang.Class({
             let messageView = new MessageView (message.direction, message);
             this._conversationDisplay.add_actor (messageView);
         }
+        this._conversationDisplay.show();
+        this._entry.show();
+        this._charCounter.show();
     },
 
     _loadSenderInfo: function (contact) {
