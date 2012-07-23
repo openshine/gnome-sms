@@ -31,7 +31,6 @@ const GLib = imports.gi.GLib;
 const Gio = imports.gi.Gio;
 const Pango = imports.gi.Pango;
 const Clutter = imports.gi.Clutter;
-const NetworkManager = imports.gi.NetworkManager;
 
 const GnomeSms = imports.gi.GnomeSms;
 
@@ -239,12 +238,14 @@ const SmsApplet = new Lang.Class({
     _init_modem: function (modem_path) {
         global.log ("MODEM: " + modem_path);
 
-        properties_proxy = new PropertiesDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
+        properties_proxy = new PropertiesDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+ modem_path);
+        sms_proxy = new SmsDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+ modem_path);
+        gsm_proxy = new GsmDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+ modem_path);
+        modem_proxy = new ModemDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+ modem_path);
+
         properties_proxy.connectSignal ('MmPropertiesChanged', Lang.bind (this, function (proxy, sender, [iface, properties]) {
             this._onModemPropertiesChanged (iface, properties);
         }));
-
-        sms_proxy = new SmsDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
         sms_proxy.connectSignal ('SmsReceived', Lang.bind (this, function (proxy, sender, [id, complete]) {
 	    this._onSmsReceived (id, complete);
         }));
@@ -252,21 +253,7 @@ const SmsApplet = new Lang.Class({
 	    this._onSmsReceived (id, complete);
         }));
 
-        gsm_proxy = new GsmDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
-        gsm_proxy.GetImsiRemote (Lang.bind (this, this._onGetImsi));
-
-        modem_proxy = new ModemDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', ''+modem_path);
         modem_proxy.EnableRemote (true, Lang.bind (this, this._onModemEnabled));
-    },
-
-    _onGetImsi: function (imsi, err) {
-        if (err) {
-            global.log ("ERROR getting IMSI: " + err);
-            return;
-        }
-
-        imsi = imsi[0];
-        outgoingMessageStorage = new OutgoingMessageStorage (imsi);
     },
 
     _onModemEnabled: function ([], err) {
@@ -279,9 +266,9 @@ const SmsApplet = new Lang.Class({
             global.log ("MODEM ENABLED");
 
             this._resetAttempt = 0;
-            sms_proxy.ListRemote (Lang.bind (this, this._onSmsList));
-
             this.actor.show ();
+
+            gsm_proxy.GetImsiRemote (Lang.bind (this, this._onGetImsi));
         }
         else {
             this._resetDevice ();
@@ -297,6 +284,18 @@ const SmsApplet = new Lang.Class({
             this._resetAttempt = 0;
             this._resetDevice ();
         }
+    },
+
+    _onGetImsi: function (imsi, err) {
+        if (err) {
+            global.log ("ERROR getting IMSI: " + err);
+            return;
+        }
+
+        imsi = imsi[0];
+        outgoingMessageStorage = new OutgoingMessageStorage (imsi);
+
+        sms_proxy.ListRemote (Lang.bind (this, this._onSmsList));
     },
 
     _onSmsReceived: function (id, complete) {
@@ -328,15 +327,17 @@ const SmsApplet = new Lang.Class({
 
         this._SmsList= {};
 	
-        let messages = outgoingMessageStorage.readMessages();
-	for (let i in messages) {
-	    let message = messages[i];
+        if (outgoingMessageStorage) {
+            let messages = outgoingMessageStorage.readMessages();
+            for (let i in messages) {
+                let message = messages[i];
 
-	    if (!(message.phone in this._SmsList)) {
-	        this._SmsList[message.phone] = [];
-	    }
-	    this._SmsList[message.phone].push (message);
-	}
+                if (!(message.phone in this._SmsList)) {
+                    this._SmsList[message.phone] = [];
+                }
+                this._SmsList[message.phone].push (message);
+            }
+        }
 
         if (list) {
             list = list[0];
@@ -364,8 +365,8 @@ const SmsApplet = new Lang.Class({
     },
 
     _sortMessages: function (message1, message2) {
-        if (message1.date < message2.date) return 1;
-        if (message1.date > message2.date) return -1;
+        if (message1.date > message2.date) return 1;
+        if (message1.date < message2.date) return -1;
         return 0;
     },
 
@@ -664,7 +665,9 @@ const MessageDisplay = new Lang.Class({
 	        sms = sms[0];
 		let number = sms.number.get_string()[0];
 		let text = sms.text.get_string()[0];
-            	outgoingMessageStorage.writeMessage (number, new Date().toString(), text);
+                if (outgoingMessageStorage) {
+                    outgoingMessageStorage.writeMessage (number, new Date().toString(), text);
+                }
 	    }
         }));
 
@@ -894,7 +897,7 @@ const ContactsEntry = new Lang.Class ({
         this._text = this.clutter_text;
         this._text.connect('key-press-event', Lang.bind(this, this._onKeyPress));
         this._text.connect('text-changed', Lang.bind(this, this._onTextChanged));
-        this._text.connect ('key-focus-out', Lang.bind(this, this._onFocusOut)); 
+//        this._text.connect ('key-focus-out', Lang.bind(this, this._onFocusOut)); 
     },
 
     _onKeyPress: function (obj, event) {
