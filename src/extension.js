@@ -39,6 +39,9 @@ const Signals = imports.signals;
 const Cairo = imports.cairo;
 const Mainloop = imports.mainloop;
 
+const Gettext = imports.gettext.domain('gnome-sms');
+const _ = Gettext.gettext;
+
 const PropertiesIface = <interface name="org.freedesktop.DBus.Properties">
     <signal name="MmPropertiesChanged">
         <arg type="s" direction="out" />

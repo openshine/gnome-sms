@@ -1,0 +1,94 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2012-07-24 13:58+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: ../src/helper.c:702
+msgid "Work"
+msgstr ""
+
+#: ../src/helper.c:726
+msgid "Work Fax"
+msgstr ""
+
+#: ../src/helper.c:738
+msgid "Car"
+msgstr ""
+
+#: ../src/helper.c:762
+msgid "Home"
+msgstr ""
+
+#: ../src/helper.c:786
+msgid "Home Fax"
+msgstr ""
+
+#: ../src/helper.c:798
+msgid "ISDN"
+msgstr ""
+
+#: ../src/helper.c:810
+msgid "Mobile"
+msgstr ""
+
+#: ../src/helper.c:822
+msgid "Other"
+msgstr ""
+
+#: ../src/helper.c:834
+msgid "Fax"
+msgstr ""
+
+#: ../src/extension.js:315
+msgid "SMS received"
+msgstr ""
+
+#: ../src/extension.js:434
+msgid "Type to search..."
+msgstr ""
+
+#: ../src/extension.js:482
+msgid "New message..."
+msgstr ""
+
+#: ../src/extension.js:587
+msgid "Type your answer..."
+msgstr ""
+
+#: ../src/extension.js:774
+msgid "Unrecognizable encoding"
+msgstr ""
+
+#: ../src/extension.js:794
+msgid "Write a new SMS:"
+msgstr ""
+
+#: ../src/extension.js:799
+msgid "To..."
+msgstr ""
+
+#: ../src/extension.js:812
+msgid "Write here your message"
+msgstr ""
+
+#: ../src/extension.js:825
+msgid "Cancel"
+msgstr ""
+
+#: ../src/extension.js:829
+msgid "Send"
+msgstr ""
