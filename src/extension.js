@@ -139,7 +139,7 @@ const SmsApplet = new Lang.Class({
 
         this._resetAttempt = 0;
         this._SmsList = {};
-        this._notificationSystem = new NotificationSystem();
+        this._notificationSystem = new NotificationSystem(this);
 
         modem_manager_proxy = new ModemManagerDBus (Gio.DBus.system, 'org.freedesktop.ModemManager', '/org/freedesktop/ModemManager');
 
@@ -315,7 +315,7 @@ const SmsApplet = new Lang.Class({
 		    let contact = new Contact (sms.number.get_string()[0]);
 
 		    let text = "<b>" + contact.name + "</b>\n" + sms.text.get_string()[0];
-                    this._notificationSystem.notify (_("SMS received"), text);
+                    this._notificationSystem.notify (contact, _("SMS received"), text);
                 }
             }));
         }
@@ -467,6 +467,17 @@ const ContactList = new Lang.Class({
             contactButton.connect ('clicked', Lang.bind (this, this._onContactButtonClicked));
             this._contactButtons.push (contactButton);
             this._contactsBox.add (contactButton, { x_fill: true, y_fill: true, expand: false });
+        }
+    },
+
+    selectContact: function (contact) {
+        for (let i in this._contactButtons) {
+            let button = this._contactButtons[i];
+            let buttonContact = button.contact;
+            if (buttonContact == contact) {
+                this._onContactButtonClicked (button);
+                return;
+            }
         }
     },
 
@@ -986,18 +997,23 @@ Signals.addSignalMethods(ContactsEntry.prototype);
 const NotificationSystem = new Lang.Class ({
     Name: 'NotificationSystem',
 
-    _init: function () {
+    _init: function (mainApplet) {
+        this._mainApplet = mainApplet;
         this._source = new MessageTray.Source(APP_NAME, 'phone', St.IconType.SYMBOLIC);
         Main.messageTray.add(this._source);
     },
 
-    notify: function (title, text, icon) {
+    notify: function (contact, title, text) {
         if (!icon) {
             icon = new St.Icon({ icon_name: 'phone',
                                  icon_size: this._source.ICON_SIZE });
         }
 
         this._notification = new MessageTray.Notification(this._source, title, text, { icon: icon, bannerMarkup: true });
+        this._notification.connect ('clicked', Lang.bind (this, function() {
+            this._mainApplet._contactList.selectContact (contact);
+            this._mainApplet.menu.open();
+        }));
         this._source.notify(this._notification);
     },
 });
